@@ -3,6 +3,8 @@ use std::{
     net::TcpListener,
 };
 
+mod threading;
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
