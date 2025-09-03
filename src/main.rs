@@ -1,28 +1,14 @@
-use std::{
-    io::{Read, Write},
-    net::TcpListener,
-};
+use std::net::Ipv4Addr;
 
-mod threading;
+use anyhow::{Context, Result};
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+use crate::server::RedisServer;
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => loop {
-                let mut buf = [0u8; 1024];
-                let n = stream.read(&mut buf).expect("failed to recv");
-                if n == 0 {
-                    println!("connection closed");
-                    break;
-                }
-                stream.write(b"+PONG\r\n").expect("failed to respond");
-                println!("accepted new connection");
-            },
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
-    }
+mod server;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let server = RedisServer::new(Ipv4Addr::new(127, 0, 0, 1), 6379);
+    server.serve().await.context("when running server")?;
+    Ok(())
 }
