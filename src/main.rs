@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 
 use crate::server::RedisServer;
 
+mod protocol;
 mod server;
 
 #[tokio::main]
