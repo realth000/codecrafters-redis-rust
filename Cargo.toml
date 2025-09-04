@@ -1,12 +1,17 @@
-[package]
-name = "codecrafters-redis"
+[workspace]
+members = ["codecrafters-redis", "serde-redis"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 authors = ["Codecrafters <hello@codecrafters.io>"]
 edition = "2021"
 
-[dependencies]
-anyhow = "1.0.59"                                   # error handling
-bytes = "1.3.0"                                     # helps manage buffers
+[workspace.dependencies]
+serde_redis = { path = "serde-redis" }
+
+anyhow = "1.0.59"
+bytes = "1.3.0"
 serde = { version = "1.0.219", features = ["derive"] }
-thiserror = "1.0.32"                                # error handling
-tokio = { version = "1.23.0", features = ["full"] } # async networking
+thiserror = "1.0.32"
+tokio = { version = "1.23.0", features = ["full"] }

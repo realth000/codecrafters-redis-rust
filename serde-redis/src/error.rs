@@ -44,6 +44,14 @@ pub enum RdError {
         replace: &'static str,
     },
 
+    /// The trailing CRLF is missing in some position.
+    Unterminated {
+        /// Position where the type not terminated.
+        pos: u64,
+        /// What type in the current position.
+        ty: &'static str,
+    },
+
     EOF,
 
     /// Custom types of error.
@@ -67,6 +75,9 @@ impl Display for RdError {
             RdError::UnsupportedPrimitiveType { curr, replace } => f.write_fmt(format_args!(
                 "unsupported primitive type {curr}, use {replace} instead"
             )),
+            RdError::Unterminated { pos, ty } => {
+                f.write_fmt(format_args!("unterminated {ty} at {pos}"))
+            }
             RdError::EOF => f.write_str("EOF"),
             RdError::Custom(v) => f.write_str(v.as_str()),
         }

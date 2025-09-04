@@ -1,9 +1,15 @@
+mod bulk_string;
 mod decode;
 mod encode;
 mod error;
 mod error_message;
+mod integer;
 mod simple_string;
+mod utils;
 
+pub use bulk_string::BulkString;
+pub use decode::from_bytes;
+pub use encode::to_vec;
 pub use error_message::ErrorMessage;
 pub use simple_string::SimpleString;
 
@@ -13,4 +19,5 @@ pub use simple_string::SimpleString;
 #[derive(Debug, Clone)]
 pub enum RdValue {
     String(SimpleString),
+    Error(ErrorMessage),
 }

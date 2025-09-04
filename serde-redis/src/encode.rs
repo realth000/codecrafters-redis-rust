@@ -1,10 +1,53 @@
+use crate::{bulk_string::KEY_BULK_STRING_NULL, utils::num_to_bytes};
+
 use super::error::{RdError, RdResult};
 
-struct RdSerializer {
+struct Encoder {
     output: Vec<u8>,
 }
 
-impl<'a> serde::ser::Serializer for &'a mut RdSerializer {
+impl Encoder {
+    fn encode_simple_string(&mut self, v: &[u8]) {
+        self.output.push(b'+');
+        self.output.extend_from_slice(v);
+        self.output.extend(b"\r\n");
+    }
+
+    fn encode_error_message(&mut self, v: &[u8]) {
+        self.output.push(b'-');
+        self.output.extend_from_slice(v);
+        self.output.extend(b"\r\n");
+    }
+
+    fn encode_integer(&mut self, v: i64) {
+        self.output.push(b':');
+        if v >= 0 {
+            self.output.push(b'+');
+        } else {
+            self.output.push(b'-');
+        }
+        let mut value = num_to_bytes(v);
+        self.output.append(&mut value);
+        self.output.extend(b"\r\n");
+    }
+
+    fn encode_bulk_string(&mut self, v: Option<&[u8]>) {
+        self.output.push(b'$');
+        match v {
+            Some(v) => {
+                self.output.append(&mut num_to_bytes(v.len() as i64));
+                self.output.extend(b"\r\n");
+                self.output.extend_from_slice(v);
+            }
+            None => {
+                self.output.extend(b"-1");
+            }
+        }
+        self.output.extend(b"\r\n");
+    }
+}
+
+impl<'a> serde::ser::Serializer for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -40,7 +83,8 @@ impl<'a> serde::ser::Serializer for &'a mut RdSerializer {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.encode_integer(v);
+        Ok(())
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
@@ -68,21 +112,18 @@ impl<'a> serde::ser::Serializer for &'a mut RdSerializer {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        self.output.push(b'+');
-        self.output.push(v as u8);
-        self.output.extend(b"\r\n");
+        self.encode_simple_string(&[v as u8]);
         Ok(())
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        self.output.push(b'+');
-        self.output.extend_from_slice(v.as_bytes());
-        self.output.extend(b"\r\n");
+        self.encode_simple_string(v.as_bytes());
         Ok(())
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.encode_bulk_string(Some(v));
+        Ok(())
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
@@ -121,7 +162,13 @@ impl<'a> serde::ser::Serializer for &'a mut RdSerializer {
     where
         T: ?Sized + serde::Serialize,
     {
-        todo!()
+        if name == KEY_BULK_STRING_NULL {
+            // Null bulk string.
+            self.encode_bulk_string(None);
+            Ok(())
+        } else {
+            todo!()
+        }
     }
 
     fn serialize_newtype_variant<T>(
@@ -191,7 +238,7 @@ impl<'a> serde::ser::Serializer for &'a mut RdSerializer {
       // the data structure around.
 }
 
-impl<'a> serde::ser::SerializeSeq for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeSeq for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -208,7 +255,7 @@ impl<'a> serde::ser::SerializeSeq for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeTuple for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeTuple for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -225,7 +272,7 @@ impl<'a> serde::ser::SerializeTuple for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeTupleStruct for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeTupleStruct for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -242,7 +289,7 @@ impl<'a> serde::ser::SerializeTupleStruct for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeTupleVariant for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeTupleVariant for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -259,7 +306,7 @@ impl<'a> serde::ser::SerializeTupleVariant for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeMap for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeMap for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -283,7 +330,7 @@ impl<'a> serde::ser::SerializeMap for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeStruct for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeStruct for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -300,7 +347,7 @@ impl<'a> serde::ser::SerializeStruct for &'a mut RdSerializer {
     }
 }
 
-impl<'a> serde::ser::SerializeStructVariant for &'a mut RdSerializer {
+impl<'a> serde::ser::SerializeStructVariant for &'a mut Encoder {
     type Ok = ();
 
     type Error = RdError;
@@ -318,11 +365,11 @@ impl<'a> serde::ser::SerializeStructVariant for &'a mut RdSerializer {
 }
 
 /// Convert to encoded bytes.
-pub fn to_bytes<T>(value: &T) -> RdResult<Vec<u8>>
+pub fn to_vec<T>(value: &T) -> RdResult<Vec<u8>>
 where
-    T: serde::ser::Serialize,
+    T: ?Sized + serde::ser::Serialize,
 {
-    let mut serializer = RdSerializer { output: Vec::new() };
+    let mut serializer = Encoder { output: Vec::new() };
     value.serialize(&mut serializer)?;
     Ok(serializer.output)
 }
@@ -333,7 +380,7 @@ mod test {
 
     #[test]
     fn test_encode_str() {
-        let d = to_bytes(&"OK".to_string()).unwrap();
+        let d = to_vec("OK").unwrap();
         assert_eq!(d, b"+OK\r\n");
     }
 }

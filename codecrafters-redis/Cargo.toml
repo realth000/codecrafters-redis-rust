@@ -1,0 +1,12 @@
+[package]
+name = "codecrafters-redis"
+version = "0.1.0"
+authors = ["Codecrafters <hello@codecrafters.io>"]
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+bytes.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
