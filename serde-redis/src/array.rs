@@ -1,10 +1,10 @@
-use serde::{de::Visitor, Deserialize, Deserializer};
+use serde::{de::Visitor, ser::SerializeSeq, Deserialize, Deserializer, Serialize};
 
 use crate::Value;
 
 /// Array in RESP.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Array(pub Option<Vec<Value>>);
+pub struct Array(Option<Vec<Value>>);
 
 impl Array {
     pub fn new(v: Option<Vec<Value>>) -> Self {
@@ -74,9 +74,30 @@ impl<'de> Deserialize<'de> for Array {
     }
 }
 
+impl Serialize for Array {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.value() {
+            Some(v) => {
+                let mut seq = serializer.serialize_seq(Some(v.len()))?;
+                for ele in v.iter() {
+                    seq.serialize_element(ele)?;
+                }
+                seq.end()
+            }
+            None => {
+                let seq = serializer.serialize_seq(Some(1))?;
+                seq.end()
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{from_bytes, BulkString, Integer, SimpleError, SimpleString};
+    use crate::{from_bytes, to_vec, BulkString, Integer, SimpleError, SimpleString};
 
     use super::*;
 
@@ -153,5 +174,24 @@ mod test {
             let v2: Array = from_bytes(v1).unwrap();
             assert!(v2.is_null());
         }
+    }
+
+    #[test]
+    fn test_encode_array() {
+        let v1 = Array::with_values(vec![
+            Value::SimpleString(SimpleString::new("ele1")),
+            Value::SimpleString(SimpleString::new("ele2")),
+        ]);
+        assert_eq!(to_vec(&v1).unwrap(), b"*2\r\n+ele1\r\n+ele2\r\n");
+        let v1 = Array::with_values(vec![
+            Value::SimpleError(SimpleError::with_prefix("ERR", "err message")),
+            Value::Array(Array::with_values(vec![
+                Value::Integer(Integer::new(12321)),
+                Value::BulkString(BulkString::new(b"I'm the Bulk String")),
+            ])),
+        ]);
+        let s0 = "*2\r\n:+12321\r\n$19\r\nI'm the Bulk String\r\n";
+        let s1 = format!("*2\r\n-ERR err message\r\n{s0}");
+        assert_eq!(to_vec(&v1).unwrap(), s1.as_bytes());
     }
 }

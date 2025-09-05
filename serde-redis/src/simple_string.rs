@@ -17,7 +17,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 /// assert_eq!(from_bytes::<String>(b"+OK\r\n").unwrap(), "OK".to_string());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SimpleString(pub String);
+pub struct SimpleString(String);
 
 impl SimpleString {
     pub fn new(v: impl Into<String>) -> Self {

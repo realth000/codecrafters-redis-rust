@@ -68,16 +68,6 @@ trait Foresee: Seek + Buf {
         }
     }
 
-    /// Check if the next 1 byte is b' '.
-    ///
-    /// ## Returns
-    ///
-    /// * `true` if next byte is b' ', advance 1 byte.
-    /// * `false` if next byte is not b' ', does not change position.
-    fn foresee_space(&mut self) -> bool {
-        self.foresee(b' ')
-    }
-
     /// Check if the next 2 bytes are b'\r\n'.
     ///
     /// ## Returns
@@ -106,22 +96,6 @@ impl Foresee for Cursor<&'_ [u8]> {
 }
 
 trait Collectable: Foresee {
-    fn collect_over(&mut self, ch: u8) -> Vec<u8> {
-        let mut b = vec![];
-        while !self.foresee(ch) && self.has_remaining() {
-            b.push(self.get_u8());
-        }
-        b
-    }
-
-    fn collect_over_space(&mut self) -> Vec<u8> {
-        let mut b = vec![];
-        while !self.foresee_space() && self.has_remaining() {
-            b.push(self.get_u8());
-        }
-        b
-    }
-
     fn collect_over_crlf(&mut self) -> Vec<u8> {
         let mut b = vec![];
         while !self.foresee_crlf() && self.has_remaining() {
@@ -139,19 +113,18 @@ pub(super) enum ParseResult {
     Integer(i64),
     BulkString(Vec<u8>),
     Array(/* Element count: */ i64),
+    Null,
 }
 
 #[derive(Debug)]
 struct Decoder<'de> {
     cursor: Cursor<&'de [u8]>,
-    input: &'de [u8],
 }
 
 impl<'de> Decoder<'de> {
     fn from_bytes(data: &'de [u8]) -> Self {
         Self {
             cursor: Cursor::new(data),
-            input: data,
         }
     }
 
@@ -192,6 +165,18 @@ impl<'de> Decoder<'de> {
                     Ok(ParseResult::Array(count))
                 }
             }
+            b'_' => {
+                // Null, always "_\r\n"
+                let _ = self.cursor.get_u8();
+                if self.cursor.foresee_crlf() {
+                    Ok(ParseResult::Null)
+                } else {
+                    Err(RdError::Unterminated {
+                        pos: self.cursor.position(),
+                        ty: "Null",
+                    })
+                }
+            }
             v => Err(RdError::UnknownPrefix {
                 pos: self.cursor.position(),
                 prefix: v,
@@ -216,26 +201,6 @@ impl<'de> Decoder<'de> {
             b'+' => Ok(value),
             _ => unreachable!("sign must be - or +"),
         }
-    }
-
-    fn parse_str(&mut self) -> RdResult<&'de str> {
-        if !self.cursor.foresee(b'+') {
-            return Err(RdError::InvalidPrefix {
-                pos: self.cursor.position(),
-                ty: "String",
-                expected: "+",
-            });
-        }
-
-        let start = self.cursor.position() as usize;
-        while !self.cursor.foresee_crlf() {
-            let _ = self.cursor.seek_relative(1);
-        }
-        let end = self.cursor.position() as usize - 2;
-
-        let data = str::from_utf8(&self.input[start..end]).map_err(RdError::InvalidUtf8Str)?;
-
-        Ok(data)
     }
 
     fn parse_simple_string(&mut self) -> RdResult<String> {
@@ -332,31 +297,32 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
                     visitor.visit_seq(Concatenated::new(self, count as u32))
                 }
             }
+            ParseResult::Null => visitor.visit_unit(),
         }
     }
 
-    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_bool<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_i32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -370,49 +336,49 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -433,7 +399,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -444,10 +410,11 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
+        // BulkString
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -458,13 +425,14 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        todo!()
+        // Null
+        self.deserialize_any(visitor)
     }
 
     fn deserialize_unit_struct<V>(
         self,
-        name: &'static str,
-        visitor: V,
+        _name: &'static str,
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -475,7 +443,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
     fn deserialize_newtype_struct<V>(
         self,
         name: &'static str,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -491,7 +459,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -500,9 +468,9 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
 
     fn deserialize_tuple_struct<V>(
         self,
-        name: &'static str,
-        len: usize,
-        visitor: V,
+        _name: &'static str,
+        _len: usize,
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -510,7 +478,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
         todo!()
     }
 
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -519,9 +487,9 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
 
     fn deserialize_struct<V>(
         self,
-        name: &'static str,
-        fields: &'static [&'static str],
-        visitor: V,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -562,20 +530,24 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut Decoder<'de> {
                         visitor.visit_seq(Concatenated::new(self, count as u32))
                     }
                 }
+                ParseResult::Null => {
+                    // Null
+                    visitor.visit_unit()
+                }
             }
         } else {
             todo!()
         }
     }
 
-    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         todo!()
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -648,79 +620,6 @@ impl<'de, 'a> SeqAccess<'de> for Concatenated<'a, 'de> {
         let v = seed.deserialize(&mut *self.de)?;
         self.count -= 1;
         Ok(Some(v))
-    }
-}
-
-// pub(super) struct Valued<'a, 'de: 'a> {
-//     de: &'a mut Decoder<'de>,
-//     value: ParseResult,
-// }
-//
-// impl<'a, 'de: 'a> Valued<'a, 'de> {
-//     fn new(de: &'a mut Decoder<'de>, value: ParseResult) -> Self {
-//         Self { de, value }
-//     }
-// }
-//
-// impl<'de, 'a> EnumAccess<'de> for Valued<'a, 'de> {
-//     type Error = RdError;
-//
-//     type Variant = Self;
-//
-//     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
-//     where
-//         V: serde::de::DeserializeSeed<'de>,
-//     {
-//         let val = seed.deserialize(&mut *self.de)?;
-//         Ok((val, self))
-//     }
-// }
-//
-// impl<'de, 'a> VariantAccess<'de> for Valued<'a, 'de> {
-//     type Error = RdError;
-//
-//     fn unit_variant(self) -> Result<(), Self::Error> {
-//         Err(serde::de::Error::custom(
-//             "unit variant `{ value }` is not supported",
-//         ))
-//     }
-//
-//     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
-//     where
-//         T: serde::de::DeserializeSeed<'de>,
-//     {
-//         Err(serde::de::Error::custom(
-//             "type variant `{ key: value }` is not supported",
-//         ))
-//     }
-//
-//     fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
-//     where
-//         V: serde::de::Visitor<'de>,
-//     {
-//         Err(serde::de::Error::custom(
-//             "tuple variant `{ key: [value...] }` is not supported",
-//         ))
-//     }
-//
-//     fn struct_variant<V>(
-//         self,
-//         _fields: &'static [&'static str],
-//         _visitor: V,
-//     ) -> Result<V::Value, Self::Error>
-//     where
-//         V: serde::de::Visitor<'de>,
-//     {
-//         Err(serde::de::Error::custom(
-//             "struct variant `{ name: { k: v, ... } }` is not supported",
-//         ))
-//     }
-// }
-
-impl<'a, 'de: 'a> serde::de::IntoDeserializer<'de, RdError> for &'de mut Decoder<'a> {
-    type Deserializer = Self;
-    fn into_deserializer(self) -> Self::Deserializer {
-        self
     }
 }
 

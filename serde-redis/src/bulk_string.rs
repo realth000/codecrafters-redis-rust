@@ -2,7 +2,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::utils::bytes_to_num;
 
-pub(super) const KEY_BULK_STRING_NULL: &'static str = "serde_redis::BULK_STRING_NULL";
+pub(super) const KEY_BULK_STRING_NULL: &'static str = "serde_redis::BulkString::Null";
 
 /// Bulk string in RESP.
 #[derive(Debug, Clone, PartialEq, Eq)]

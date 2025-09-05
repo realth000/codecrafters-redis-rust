@@ -4,24 +4,27 @@ mod decode;
 mod encode;
 mod error;
 mod integer;
+mod null;
 mod simple_error;
 mod simple_string;
 mod utils;
 
 const KEY_VALUE_ENUM: &'static str = "serde_redis::Value";
 
+use serde::{de::Visitor, Deserialize, Serialize};
+
 pub use array::Array;
 pub use bulk_string::BulkString;
 pub use decode::from_bytes;
 pub use encode::to_vec;
 pub use integer::Integer;
-use serde::{de::Visitor, Deserialize};
+pub use null::Null;
 pub use simple_error::SimpleError;
 pub use simple_string::SimpleString;
 
 use crate::{
     array::ArrayVisitor, bulk_string::BulkStringVisitor, integer::IntegerVisitor,
-    simple_error::SimpleErrorVisitor, simple_string::SimpleStringVisitor,
+    null::NullVisitor, simple_error::SimpleErrorVisitor, simple_string::SimpleStringVisitor,
 };
 
 /// All supported data types used in redis protocol.
@@ -36,6 +39,7 @@ pub enum Value {
     Integer(Integer),
     BulkString(BulkString),
     Array(Array),
+    Null(Null),
 }
 
 struct ValueVisitor;
@@ -98,8 +102,19 @@ impl<'de> Visitor<'de> for ValueVisitor {
         A: serde::de::SeqAccess<'de>,
     {
         // Array
+
         let v = ArrayVisitor {}.visit_seq(seq)?;
         Ok(Value::Array(v))
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        // Null
+
+        let v = NullVisitor {}.visit_unit()?;
+        Ok(Value::Null(v))
     }
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -113,5 +128,21 @@ impl<'de> Deserialize<'de> for Value {
         D: serde::Deserializer<'de>,
     {
         deserializer.deserialize_enum(KEY_VALUE_ENUM, &[], ValueVisitor)
+    }
+}
+
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Value::SimpleString(v) => v.serialize(serializer),
+            Value::SimpleError(v) => v.serialize(serializer),
+            Value::Integer(v) => v.serialize(serializer),
+            Value::BulkString(v) => v.serialize(serializer),
+            Value::Array(v) => v.serialize(serializer),
+            Value::Null(v) => v.serialize(serializer),
+        }
     }
 }

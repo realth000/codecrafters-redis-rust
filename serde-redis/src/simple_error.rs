@@ -1,4 +1,6 @@
-use serde::{de::Visitor, Deserialize};
+use serde::{de::Visitor, ser::SerializeStruct, Deserialize, Serialize};
+
+pub(crate) const KEY_SIMPLE_ERROR: &'static str = "serde_redis::SimpleError";
 
 /// Error message in redis protocol.
 ///
@@ -24,21 +26,18 @@ pub struct SimpleError {
     ///
     /// When encoding and decoding prefix, it is guaranteed to be UPPERCASE, no matter the
     /// content is already UPPERCASE or not.
-    pub prefix: Option<String>,
+    prefix: Option<String>,
 
     /// The message in error.
     ///
     /// Note that this field works like simple string, can not hold CRLF as well.
-    pub message: String,
+    message: String,
 }
 
 impl SimpleError {
     pub fn new(prefix: Option<impl Into<String> + Sized>, message: impl Into<String>) -> Self {
         Self {
-            prefix: match prefix {
-                Some(v) => Some(v.into()),
-                None => None,
-            },
+            prefix: prefix.map(|x| Into::<String>::into(x).to_uppercase()),
             message: message.into(),
         }
     }
@@ -55,6 +54,14 @@ impl SimpleError {
             prefix: None,
             message: message.into(),
         }
+    }
+
+    pub fn prefix(&self) -> Option<&str> {
+        self.prefix.as_deref()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -115,9 +122,27 @@ impl<'de> Visitor<'de> for SimpleErrorVisitor {
     }
 }
 
+impl Serialize for SimpleError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct(KEY_SIMPLE_ERROR, 0 /* Length not matter*/)?;
+        match &self.prefix {
+            Some(v) => {
+                s.serialize_field(KEY_SIMPLE_ERROR, format!("{v} ").as_str())?;
+            }
+            None => { /* Do nothing. */ }
+        }
+        s.serialize_field(KEY_SIMPLE_ERROR, &self.message)?;
+        s.serialize_field(KEY_SIMPLE_ERROR, "\r\n")?;
+        s.end()
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::from_bytes;
+    use crate::{from_bytes, to_vec};
 
     use super::*;
 
@@ -132,5 +157,13 @@ mod test {
         let v1 = from_bytes::<SimpleError>(b"-ERR Msg\r\n").unwrap();
         assert_eq!(v1.prefix.unwrap().as_str(), "ERR");
         assert_eq!(v1.message.as_str(), "Msg");
+    }
+
+    #[test]
+    fn test_encode_error_message() {
+        let v0 = SimpleError::with_prefix("ERRKIND", "err message");
+        assert_eq!(to_vec(&v0).unwrap(), b"-ERRKIND err message\r\n");
+        let v1 = SimpleError::without_prefix("err message");
+        assert_eq!(to_vec(&v1).unwrap(), b"-err message\r\n");
     }
 }

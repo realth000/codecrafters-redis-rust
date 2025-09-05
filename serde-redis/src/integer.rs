@@ -6,7 +6,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 ///
 /// `:[<+|->]<value>\r\n`
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Integer(pub i64);
+pub struct Integer(i64);
 
 impl Integer {
     pub fn new(v: i64) -> Self {
