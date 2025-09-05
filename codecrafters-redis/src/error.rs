@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use serde_redis::RdError;
+use serde_redis::{Array, RdError};
 
 pub type ServerResult<T> = Result<T, ServerError>;
 
@@ -21,6 +21,9 @@ pub enum ServerError {
 
     /// Error when serializing or deserializing.
     SerdeError(RdError),
+
+    /// Invalid args for command.
+    InvalidArgs { cmd: &'static str, args: Array },
 }
 
 impl Display for ServerError {
@@ -34,6 +37,9 @@ impl Display for ServerError {
             ServerError::SerdeError(e) => f.write_fmt(format_args!(
                 "error in serialization or deserialization: {e}"
             )),
+            ServerError::InvalidArgs { cmd, args } => {
+                f.write_fmt(format_args!("invalid args {args:?} for command {cmd}"))
+            }
         }
     }
 }

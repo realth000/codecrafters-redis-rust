@@ -1,11 +1,12 @@
 use serde_redis::{Array, Value};
 
 use crate::{
-    command::ping::handle_ping_command,
+    command::{echo::handle_echo_command, ping::handle_ping_command},
     conn::Conn,
     error::{ServerError, ServerResult},
 };
 
+mod echo;
 mod ping;
 
 pub(crate) async fn dispatch_command(mut args: Array, conn: &mut Conn<'_>) -> ServerResult<()> {
@@ -22,6 +23,7 @@ pub(crate) async fn dispatch_command(mut args: Array, conn: &mut Conn<'_>) -> Se
                     .as_str()
                 {
                     "PING" => handle_ping_command(conn).await,
+                    "ECHO" => handle_echo_command(conn, args).await,
                     v => Err(ServerError::InvalidCommand(v.to_string())),
                 }
             }
