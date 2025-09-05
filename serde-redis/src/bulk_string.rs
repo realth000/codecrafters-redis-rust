@@ -5,6 +5,7 @@ use crate::utils::bytes_to_num;
 pub(super) const KEY_BULK_STRING_NULL: &'static str = "serde_redis::BULK_STRING_NULL";
 
 /// Bulk string in RESP.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulkString(Option<Vec<u8>>);
 
 impl BulkString {
@@ -25,7 +26,7 @@ impl BulkString {
     }
 }
 
-struct BulkStringVisitor;
+pub(crate) struct BulkStringVisitor;
 
 impl<'de> Visitor<'de> for BulkStringVisitor {
     type Value = BulkString;

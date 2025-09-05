@@ -48,8 +48,26 @@ pub enum RdError {
     Unterminated {
         /// Position where the type not terminated.
         pos: u64,
+
         /// What type in the current position.
         ty: &'static str,
+    },
+
+    /// The length section in sequence types is incorrect.
+    ///
+    /// Array, Map, Set and other types that have elements indicator section
+    /// may encounter this error.
+    ///
+    /// Generally the length is rather a value greater than 0 or -1 (may be allowed).
+    InvalidSeqLength {
+        /// The position where length is incorrect.
+        pos: u64,
+
+        /// The type name.
+        ty: &'static str,
+
+        /// The invalid length value.
+        value: i64,
     },
 
     EOF,
@@ -78,6 +96,9 @@ impl Display for RdError {
             RdError::Unterminated { pos, ty } => {
                 f.write_fmt(format_args!("unterminated {ty} at {pos}"))
             }
+            RdError::InvalidSeqLength { pos, ty, value } => f.write_fmt(format_args!(
+                "invalid length section value {value} for type {ty} at {pos}"
+            )),
             RdError::EOF => f.write_str("EOF"),
             RdError::Custom(v) => f.write_str(v.as_str()),
         }

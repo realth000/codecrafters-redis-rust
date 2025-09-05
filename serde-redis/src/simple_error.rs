@@ -14,8 +14,8 @@ use serde::{de::Visitor, Deserialize};
 /// ```rust
 /// ```
 ///
-#[derive(Debug, Clone)]
-pub struct ErrorMessage {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimpleError {
     /// Optional prefix of the error message.
     ///
     /// Prefix is the first part after '-' prefix and all letters in prefix are in UPPERCASE.
@@ -32,7 +32,7 @@ pub struct ErrorMessage {
     pub message: String,
 }
 
-impl ErrorMessage {
+impl SimpleError {
     pub fn new(prefix: Option<impl Into<String> + Sized>, message: impl Into<String>) -> Self {
         Self {
             prefix: match prefix {
@@ -58,19 +58,19 @@ impl ErrorMessage {
     }
 }
 
-impl<'de> Deserialize<'de> for ErrorMessage {
+impl<'de> Deserialize<'de> for SimpleError {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_any(ErrorMessageVisitor)
+        deserializer.deserialize_any(SimpleErrorVisitor)
     }
 }
 
-struct ErrorMessageVisitor;
+pub(crate) struct SimpleErrorVisitor;
 
-impl<'de> Visitor<'de> for ErrorMessageVisitor {
-    type Value = ErrorMessage;
+impl<'de> Visitor<'de> for SimpleErrorVisitor {
+    type Value = SimpleError;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("redis error message")
@@ -88,12 +88,12 @@ impl<'de> Visitor<'de> for ErrorMessageVisitor {
         E: serde::de::Error,
     {
         if v.is_empty() {
-            return Ok(ErrorMessage::without_prefix(""));
+            return Ok(SimpleError::without_prefix(""));
         }
 
         let space_pos = match v.find(|x| x == ' ') {
             Some(v) => v,
-            None => return Ok(ErrorMessage::without_prefix(v)),
+            None => return Ok(SimpleError::without_prefix(v)),
         };
 
         let has_prefix = if space_pos == 0 {
@@ -108,9 +108,9 @@ impl<'de> Visitor<'de> for ErrorMessageVisitor {
 
         if has_prefix {
             let (prefix, message) = v.split_at(space_pos);
-            Ok(ErrorMessage::with_prefix(prefix, message.trim_start()))
+            Ok(SimpleError::with_prefix(prefix, message.trim_start()))
         } else {
-            Ok(ErrorMessage::without_prefix(v))
+            Ok(SimpleError::without_prefix(v))
         }
     }
 }
@@ -123,13 +123,13 @@ mod test {
 
     #[test]
     fn test_decode_error_message() {
-        let v0 = from_bytes::<ErrorMessage>(b"-error message\r\n").unwrap();
+        let v0 = from_bytes::<SimpleError>(b"-error message\r\n").unwrap();
         assert!(v0.prefix.is_none());
         assert_eq!(v0.message.as_str(), "error message");
-        let v1 = from_bytes::<ErrorMessage>(b"-Hello From Error Message\r\n").unwrap();
+        let v1 = from_bytes::<SimpleError>(b"-Hello From Error Message\r\n").unwrap();
         assert!(v1.prefix.is_none());
         assert_eq!(v1.message.as_str(), "Hello From Error Message");
-        let v1 = from_bytes::<ErrorMessage>(b"-ERR Msg\r\n").unwrap();
+        let v1 = from_bytes::<SimpleError>(b"-ERR Msg\r\n").unwrap();
         assert_eq!(v1.prefix.unwrap().as_str(), "ERR");
         assert_eq!(v1.message.as_str(), "Msg");
     }

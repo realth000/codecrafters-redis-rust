@@ -5,7 +5,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 /// ## Format
 ///
 /// `:[<+|->]<value>\r\n`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Integer(pub i64);
 
 impl Integer {
@@ -18,7 +18,7 @@ impl Integer {
     }
 }
 
-struct IntegerVisitor;
+pub(crate) struct IntegerVisitor;
 
 impl<'de> Visitor<'de> for IntegerVisitor {
     type Value = Integer;

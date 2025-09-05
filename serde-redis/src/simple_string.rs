@@ -16,7 +16,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 /// assert_eq!(to_vec("OK").unwrap(), b"+OK\r\n");
 /// assert_eq!(from_bytes::<String>(b"+OK\r\n").unwrap(), "OK".to_string());
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleString(pub String);
 
 impl SimpleString {
@@ -29,7 +29,7 @@ impl SimpleString {
     }
 }
 
-struct SimpleStringVisitor;
+pub(crate) struct SimpleStringVisitor;
 
 impl<'de> Visitor<'de> for SimpleStringVisitor {
     type Value = SimpleString;
