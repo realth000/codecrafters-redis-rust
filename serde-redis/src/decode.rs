@@ -175,14 +175,14 @@ impl<'de> Decoder<'de> {
             }
             b'$' => Ok(ParseResult::BulkString(self.parse_bulk_string()?)),
             b'*' => {
+                let _ = self.cursor.get_u8();
                 // TODO: Check invalid length.
                 // Array.
                 // Elements count.
                 let pos = self.cursor.position();
                 if self.cursor.foresee(b'-')
                     && self.cursor.foresee(b'1')
-                    && self.cursor.foresee(b'\r')
-                    && self.cursor.foresee(b'\n')
+                    && self.cursor.foresee_crlf()
                 {
                     Ok(ParseResult::Array(-1))
                 } else {
