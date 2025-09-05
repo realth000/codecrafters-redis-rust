@@ -17,6 +17,7 @@ pub use array::Array;
 pub use bulk_string::BulkString;
 pub use decode::from_bytes;
 pub use encode::to_vec;
+pub use error::RdError;
 pub use integer::Integer;
 pub use null::Null;
 pub use simple_error::SimpleError;

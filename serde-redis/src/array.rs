@@ -20,7 +20,15 @@ impl Array {
     }
 
     pub fn is_null(&self) -> bool {
-        self.0.is_none()
+        self.value().is_none()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value().is_some_and(|x| x.is_empty())
+    }
+
+    pub fn is_null_or_empty(&self) -> bool {
+        self.is_null() || self.is_empty()
     }
 
     pub fn value(&self) -> Option<&Vec<Value>> {
@@ -29,6 +37,19 @@ impl Array {
 
     pub fn take(&mut self) -> Option<Vec<Value>> {
         self.0.take()
+    }
+
+    /// Pop the last element in Array.
+    pub fn pop(&mut self) -> Option<Value> {
+        self.0.as_mut().and_then(|x| x.pop())
+    }
+
+    /// Pop the first element in array.
+    pub fn pop_front(&mut self) -> Option<Value> {
+        if self.is_null_or_empty() {
+            return None;
+        }
+        self.0.as_mut().map(|x| x.remove(0))
     }
 }
 

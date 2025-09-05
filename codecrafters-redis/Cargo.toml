@@ -8,5 +8,6 @@ edition = "2021"
 anyhow.workspace = true
 bytes.workspace = true
 serde.workspace = true
+serde_redis.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

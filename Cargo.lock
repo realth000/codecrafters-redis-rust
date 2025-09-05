@@ -69,6 +69,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "serde",
+ "serde_redis",
  "thiserror",
  "tokio",
 ]

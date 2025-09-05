@@ -1,10 +1,13 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use anyhow::{Context, Result};
+use serde_redis::Array;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncReadExt,
     net::{TcpListener, TcpStream},
 };
+
+use crate::{command::dispatch_command, conn::Conn, error::ServerError};
 
 #[derive(Debug, Clone)]
 pub struct RedisServer {
@@ -38,23 +41,25 @@ impl RedisServer {
         }
     }
 
-    async fn handle_task(id: u32, mut stream: TcpStream, addr: SocketAddr) -> Result<()> {
-        println!("[{id}] new connection with client {addr:?}");
+    async fn handle_task(id: usize, mut stream: TcpStream, addr: SocketAddr) -> Result<()> {
+        let mut conn = Conn::new(id, &mut stream);
+        conn.log(format!("new connection with client {addr:?}"));
         loop {
             let mut buf = [0u8; 1024];
-            let n = stream
+            let n = conn
+                .stream
                 .read(&mut buf)
                 .await
                 .with_context(|| format!("[{id}] failed to read from stream"))?;
             if n == 0 {
-                println!("connection closed");
+                conn.log("connection closed");
                 break;
             }
-            stream
-                .write(b"+PONG\r\n")
-                .await
-                .with_context(|| format!("[{id}] failed to write response"))?;
-            println!("[{id}] send PONG response");
+            conn.log("receive message");
+            let message: Array =
+                serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
+            dispatch_command(message, &mut conn).await?;
+            conn.log("responded to client");
         }
         Ok(())
     }

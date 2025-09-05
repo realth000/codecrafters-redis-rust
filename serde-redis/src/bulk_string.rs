@@ -24,6 +24,10 @@ impl BulkString {
     pub fn is_null(&self) -> bool {
         self.0.is_none()
     }
+
+    pub fn take(&mut self) -> Option<Vec<u8>> {
+        self.0.take()
+    }
 }
 
 pub(crate) struct BulkStringVisitor;
