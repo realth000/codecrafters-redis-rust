@@ -8,6 +8,7 @@ mod command;
 mod conn;
 mod error;
 mod server;
+mod storage;
 
 #[tokio::main]
 async fn main() -> Result<()> {

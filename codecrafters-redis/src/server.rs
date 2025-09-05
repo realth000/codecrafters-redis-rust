@@ -7,17 +7,21 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-use crate::{command::dispatch_command, conn::Conn, error::ServerError};
+use crate::{command::dispatch_command, conn::Conn, error::ServerError, storage::Storage};
 
-#[derive(Debug, Clone)]
 pub struct RedisServer {
     ip: Ipv4Addr,
     port: u16,
+    storage: Storage,
 }
 
 impl RedisServer {
     pub fn new(ip: Ipv4Addr, port: u16) -> Self {
-        Self { ip, port }
+        Self {
+            ip,
+            port,
+            storage: Storage::new(),
+        }
     }
 
     pub async fn serve(&self) -> Result<()> {
@@ -32,8 +36,9 @@ impl RedisServer {
                 .accept()
                 .await
                 .context("failed to accept new tcp connection")?;
+            let mut s = self.storage.clone();
             tokio::spawn(async move {
-                if let Err(e) = Self::handle_task(id, socket, addr).await {
+                if let Err(e) = Self::handle_task(&mut s, id, socket, addr).await {
                     println!("[{id}] failed to handle task: {e:?}");
                 }
             });
@@ -41,7 +46,12 @@ impl RedisServer {
         }
     }
 
-    async fn handle_task(id: usize, mut stream: TcpStream, addr: SocketAddr) -> Result<()> {
+    async fn handle_task(
+        storage: &mut Storage,
+        id: usize,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<()> {
         let mut conn = Conn::new(id, &mut stream);
         conn.log(format!("new connection with client {addr:?}"));
         loop {
@@ -58,7 +68,7 @@ impl RedisServer {
             conn.log("receive message");
             let message: Array =
                 serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
-            dispatch_command(message, &mut conn).await?;
+            dispatch_command(storage, message, &mut conn).await?;
             conn.log("responded to client");
         }
         Ok(())
