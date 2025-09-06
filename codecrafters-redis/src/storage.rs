@@ -213,4 +213,22 @@ impl Storage {
             Ok(Value::Array(Array::new_empty()))
         }
     }
+
+    /// Get the count of elements in an array specified by `key`.
+    ///
+    /// * If `key` not present in storage, return `Err(OpError::KeyAbsent)`.
+    /// * If the value corresponded to `key` is not an array, return `Err(OpError::TypeMismatch)`.
+    pub fn get_array_length(&self, key: impl AsRef<str>) -> OpResult<usize> {
+        let lock = self.inner.lock().unwrap();
+
+        if let Some(ValueCell { value, .. }) = lock.data.get(key.as_ref()) {
+            if let Value::Array(arr) = value {
+                Ok(arr.len())
+            } else {
+                Err(OpError::TypeMismatch)
+            }
+        } else {
+            Err(OpError::KeyAbsent)
+        }
+    }
 }
