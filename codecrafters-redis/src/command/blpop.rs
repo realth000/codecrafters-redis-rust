@@ -1,4 +1,4 @@
-use std::{sync::WaitTimeoutResult, time::Duration};
+use std::time::Duration;
 
 use serde_redis::{Array, BulkString, SimpleError, Value};
 
@@ -59,42 +59,29 @@ pub(super) async fn handle_blpop_command(
         Ok(Some(v)) => v,
         Ok(None) | Err(OpError::KeyAbsent) => {
             // No value in list, block here.
-            let task = LpopBlockedTask::new(key.clone());
+            let (task, recver) = LpopBlockedTask::new(key.clone());
             let handle = task.clone_handle();
             storage.lpop_add_block_task(task);
-            let mut lock = handle.lock.lock().unwrap();
+
+            let notify = handle.notify.clone();
             conn.log(format!(
                 "BLPOP: value not present, blocking connection for {block_duration:?}"
             ));
-            let mut wait_result: Option<Value> = None;
+            let wait_result: Option<Value>;
             match block_duration {
                 Some(d) => {
-                    // Waiting for some time.
-                    let mut timeout_result: WaitTimeoutResult;
-                    loop {
-                        (lock, timeout_result) = handle.condvar.wait_timeout(lock, d).unwrap();
-                        if timeout_result.timed_out() {
-                            // Timeout.
-                            conn.log("BLPOP: block timeout");
-                            break;
-                        }
-
-                        if lock.is_some() {
-                            // Waited the result.
-                            wait_result = lock.take();
-                            break;
-                        }
-                    }
+                    // Wait for some time.
+                    tokio::time::timeout(d, async {
+                        notify.notified().await;
+                    })
+                    .await
+                    .unwrap();
+                    wait_result = recver.await.map(Some).unwrap()
                 }
                 None => {
-                    // Waiting forever.
-                    loop {
-                        lock = handle.condvar.wait(lock).unwrap();
-                        if lock.is_some() {
-                            wait_result = lock.take();
-                            break;
-                        }
-                    }
+                    // Wait forever.
+                    notify.notified().await;
+                    wait_result = recver.await.map(Some).unwrap();
                 }
             };
 

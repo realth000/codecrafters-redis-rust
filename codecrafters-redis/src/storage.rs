@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
 use serde_redis::{Array, SimpleError, Value};
+use tokio::sync::{oneshot, Notify};
 
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
@@ -75,23 +76,28 @@ impl ValueCell {
 }
 
 pub(crate) struct LpopBlockedHandle {
-    pub lock: Mutex<Option<Value>>,
-    pub condvar: Condvar,
+    pub notify: Arc<Notify>,
 }
 
 pub(crate) struct LpopBlockedTask {
     key: String,
     handle: Arc<LpopBlockedHandle>,
+    sender: oneshot::Sender<Value>,
 }
 
 impl LpopBlockedTask {
-    pub fn new(key: String) -> Self {
+    pub fn new(key: String) -> (Self, oneshot::Receiver<Value>) {
+        let (sender, recver) = oneshot::channel::<Value>();
         let handle = Arc::new(LpopBlockedHandle {
-            lock: Mutex::new(None),
-            condvar: Condvar::new(),
+            notify: Arc::new(Notify::new()),
         });
 
-        Self { key, handle }
+        let s = Self {
+            key,
+            handle,
+            sender,
+        };
+        (s, recver)
     }
 
     pub fn clone_handle(&self) -> Arc<LpopBlockedHandle> {
@@ -185,9 +191,8 @@ impl Storage {
                     // Find a task waiting for current list.
                     let v = value.pop_front().unwrap(); // Not empty for sure.
                     let task_to_feed = lpop_lock.remove(pos);
-                    let mut task_to_feed_lock = task_to_feed.handle.lock.lock().unwrap();
-                    *task_to_feed_lock = Some(v);
-                    task_to_feed.handle.condvar.notify_all();
+                    task_to_feed.sender.send(v).unwrap();
+                    task_to_feed.handle.notify.notify_one();
                     interupted_count += 1;
                 }
                 None => {
