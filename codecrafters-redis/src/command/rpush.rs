@@ -37,8 +37,6 @@ pub(super) async fn handle_rpush_command(
         }
     };
 
-    conn.log(format!(">>> RPUSH resp: {content:?}"));
-
     conn.stream
         .write(&content)
         .await

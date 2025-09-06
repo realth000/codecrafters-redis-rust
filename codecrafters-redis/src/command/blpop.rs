@@ -67,21 +67,26 @@ pub(super) async fn handle_blpop_command(
             conn.log(format!(
                 "BLPOP: value not present, blocking connection for {block_duration:?}"
             ));
-            let wait_result: Option<Value>;
-            match block_duration {
+            let wait_result = match block_duration {
                 Some(d) => {
                     // Wait for some time.
-                    tokio::time::timeout(d, async {
+                    match tokio::time::timeout(d, async {
                         notify.notified().await;
                     })
                     .await
-                    .unwrap();
-                    wait_result = recver.await.map(Some).unwrap()
+                    {
+                        Ok(_) => recver.await.ok(),
+                        Err(_) =>
+                        /* Timeout */
+                        {
+                            None
+                        }
+                    }
                 }
                 None => {
                     // Wait forever.
                     notify.notified().await;
-                    wait_result = recver.await.map(Some).unwrap();
+                    recver.await.map(Some).unwrap()
                 }
             };
 
@@ -93,9 +98,5 @@ pub(super) async fn handle_blpop_command(
         Err(e) => e.to_message(),
     };
 
-    conn.log(format!(
-        ">>> BLPOP resp: {}",
-        String::from_utf8(serde_redis::to_vec(&content).unwrap()).unwrap()
-    ));
     conn.write_value(&content).await
 }
