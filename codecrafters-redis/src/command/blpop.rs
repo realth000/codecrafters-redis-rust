@@ -90,10 +90,13 @@ pub(super) async fn handle_blpop_command(
                 }
             };
 
-            Value::Array(Array::with_values(vec![
-                Value::BulkString(BulkString::new(key)),
-                wait_result.unwrap_or_else(|| Value::BulkString(BulkString::null())),
-            ]))
+            match wait_result {
+                Some(v) => Value::Array(Array::with_values(vec![
+                    Value::BulkString(BulkString::new(key)),
+                    v,
+                ])),
+                None => Value::Array(Array::null()),
+            }
         }
         Err(e) => e.to_message(),
     };
