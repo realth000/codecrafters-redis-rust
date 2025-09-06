@@ -1,4 +1,6 @@
-use serde_redis::{Array, SimpleString, Value};
+use std::time::Duration;
+
+use serde_redis::{Array, SimpleString};
 use tokio::io::AsyncWriteExt;
 
 use crate::{
@@ -13,21 +15,41 @@ pub(super) async fn handle_set_command(
     storage: &mut Storage,
 ) -> ServerResult<()> {
     conn.log("run command SET");
-    let key = match args.pop_front() {
-        Some(Value::BulkString(mut s)) => {
-            String::from_utf8(s.take().unwrap()).map_err(ServerError::FromUtf8Error)?
-        }
-        _ => {
-            return Err(ServerError::InvalidArgs {
-                cmd: "SET",
-                args: args,
-            })
-        }
-    };
+    let key = args
+        .pop_front_bulk_string()
+        .ok_or_else(|| ServerError::InvalidArgs {
+            cmd: "SET",
+            args: args.clone(),
+        })?;
     let value = args.pop_front().unwrap();
     conn.log(format!("SET {key:?}={value:?}"));
 
-    storage.insert(key, value);
+    // Duration till expire. None value means never expire.
+    let mut duration = None;
+    match args.pop_front_bulk_string() {
+        Some(v) => match v.to_lowercase().as_str() {
+            "px" => {
+                duration = args
+                    .pop_front_bulk_string()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or_else(|| ServerError::InvalidArgs {
+                        cmd: "SET",
+                        args: args.clone(),
+                    })
+                    .map(|d| Some(Duration::from_millis(d)))?
+            }
+
+            _ => {
+                return Err(ServerError::InvalidArgs {
+                    cmd: "SET",
+                    args: args.clone(),
+                })
+            }
+        },
+        None => { /* No more args */ }
+    }
+
+    storage.insert(key, value, duration);
     let msg2 = SimpleString::new("OK");
     let content = serde_redis::to_vec(&msg2).map_err(ServerError::SerdeError)?;
     conn.stream

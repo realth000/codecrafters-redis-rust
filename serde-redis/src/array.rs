@@ -51,6 +51,23 @@ impl Array {
         }
         self.0.as_mut().map(|x| x.remove(0))
     }
+
+    /// Try get the first element if it is BulkString, returns
+    /// the bytes in it.
+    pub fn pop_front_bulk_string_bytes(&mut self) -> Option<Vec<u8>> {
+        if let Some(Value::BulkString(mut s)) = self.pop_front() {
+            s.take()
+        } else {
+            None
+        }
+    }
+
+    /// Try get the first element if it is BulkString, returns
+    /// the UTF-8 String representation of bytes in it.
+    pub fn pop_front_bulk_string(&mut self) -> Option<String> {
+        self.pop_front_bulk_string_bytes()
+            .and_then(|x| String::from_utf8(x).ok())
+    }
 }
 
 pub(crate) struct ArrayVisitor;

@@ -10,9 +10,6 @@ pub enum ServerError {
     /// Forwarding `std::io::Error`
     IoError(std::io::Error),
 
-    /// Forwaring `std::string::FromUtf8Error`
-    FromUtf8Error(std::string::FromUtf8Error),
-
     /// The message is invalid, not following the correct structure.
     ///
     /// That is, the message should be an array with command as the
@@ -33,7 +30,6 @@ impl Display for ServerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ServerError::IoError(e) => f.write_fmt(format_args!("io error: {e}")),
-            ServerError::FromUtf8Error(e) => f.write_fmt(format_args!("utf8 error: {e}")),
             ServerError::InvalidMessage(msg) => f.write_fmt(format_args!("invalid message: {msg}")),
             ServerError::InvalidCommand(cmd) => {
                 f.write_fmt(format_args!("invalid command \"{cmd}\""))

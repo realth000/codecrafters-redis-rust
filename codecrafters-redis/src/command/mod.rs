@@ -30,6 +30,7 @@ pub(crate) async fn dispatch_command(
             Some(cmd) => {
                 match String::from_utf8(cmd)
                     .map_err(|e| ServerError::InvalidCommand(format!("{e:?}")))?
+                    .to_uppercase()
                     .as_str()
                 {
                     "PING" => handle_ping_command(conn).await,

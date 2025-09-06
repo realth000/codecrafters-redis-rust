@@ -70,6 +70,9 @@ pub enum RdError {
         value: i64,
     },
 
+    /// The bulk string is null.
+    NullBulkString,
+
     EOF,
 
     /// Custom types of error.
@@ -99,6 +102,7 @@ impl Display for RdError {
             RdError::InvalidSeqLength { pos, ty, value } => f.write_fmt(format_args!(
                 "invalid length section value {value} for type {ty} at {pos}"
             )),
+            RdError::NullBulkString => f.write_str("null bulk string"),
             RdError::EOF => f.write_str("EOF"),
             RdError::Custom(v) => f.write_str(v.as_str()),
         }
