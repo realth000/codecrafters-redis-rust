@@ -347,4 +347,18 @@ impl Storage {
         let mut lock = self.lpop_blocked_task.lock().unwrap();
         lock.push(task);
     }
+
+    /// Get the type of value specified by `key`
+    ///
+    /// If key not present, return `OpError::KeyAbsent`.
+    pub fn get_value_type(&self, key: impl AsRef<str>) -> OpResult<&'static str> {
+        let lock = self.inner.lock().unwrap();
+        match lock.data.get(key.as_ref()).map(|cell| cell.live_value()) {
+            Some(LiveValue::Live(v)) => Ok(v.simple_name()),
+            Some(LiveValue::Expired) | Some(LiveValue::Absent) | None => {
+                // Expired.
+                Err(OpError::KeyAbsent)
+            }
+        }
+    }
 }

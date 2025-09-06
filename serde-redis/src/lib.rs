@@ -43,6 +43,19 @@ pub enum Value {
     Null(Null),
 }
 
+impl Value {
+    pub fn simple_name(&self) -> &'static str {
+        match self {
+            Value::SimpleString(..) => "string",
+            Value::SimpleError(..) => "error",
+            Value::Integer(..) => "integer",
+            Value::BulkString(..) => "string",
+            Value::Array(..) => "list",
+            Value::Null(..) => "null",
+        }
+    }
+}
+
 struct ValueVisitor;
 
 impl<'de> Visitor<'de> for ValueVisitor {
