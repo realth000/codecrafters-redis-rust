@@ -209,7 +209,7 @@ impl Serialize for Array {
                 seq.end()
             }
             None => {
-                let seq = serializer.serialize_seq(Some(1))?;
+                let seq = serializer.serialize_seq(None)?;
                 seq.end()
             }
         }
@@ -314,5 +314,8 @@ mod test {
         let s0 = "*2\r\n:12321\r\n$19\r\nI'm the Bulk String\r\n";
         let s1 = format!("*2\r\n-ERR err message\r\n{s0}");
         assert_eq!(to_vec(&v1).unwrap(), s1.as_bytes());
+
+        let v2 = Array::null();
+        assert_eq!(to_vec(&v2).unwrap(), b"*-1\r\n");
     }
 }
