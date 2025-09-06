@@ -125,6 +125,13 @@ impl DerefMut for Array {
     }
 }
 
+impl FromIterator<Value> for Array {
+    fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
+        let vs = iter.into_iter().collect::<Vec<_>>();
+        Self(Some(vs))
+    }
+}
+
 pub(crate) struct ArrayVisitor;
 
 impl<'de> Visitor<'de> for ArrayVisitor {

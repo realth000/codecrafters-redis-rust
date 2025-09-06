@@ -78,14 +78,14 @@ mod test {
     #[test]
     fn test_encode_integer() {
         let v1 = Integer::new(1);
-        assert_eq!(to_vec(&v1).unwrap().as_slice(), b":+1\r\n");
+        assert_eq!(to_vec(&v1).unwrap().as_slice(), b":1\r\n");
         let v2 = Integer::new(987654321);
-        assert_eq!(to_vec(&v2).unwrap().as_slice(), b":+987654321\r\n");
+        assert_eq!(to_vec(&v2).unwrap().as_slice(), b":987654321\r\n");
         let v1 = Integer::new(-1);
         assert_eq!(to_vec(&v1).unwrap().as_slice(), b":-1\r\n");
         let v2 = Integer::new(-987654321);
         assert_eq!(to_vec(&v2).unwrap().as_slice(), b":-987654321\r\n");
         let v5 = Integer::new(0);
-        assert_eq!(to_vec(&v5).unwrap().as_slice(), b":+0\r\n");
+        assert_eq!(to_vec(&v5).unwrap().as_slice(), b":0\r\n");
     }
 }

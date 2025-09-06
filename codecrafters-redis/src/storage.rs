@@ -18,7 +18,7 @@ pub(crate) enum OpError {
 
 impl OpError {
     /// Build the message to return according to current error.
-    pub fn to_message_bytes(&self) -> Vec<u8> {
+    pub fn to_message(&self) -> Value {
         let e = match self {
             OpError::KeyAbsent => {
                 SimpleError::with_prefix("KEYNOTFOUND", "key not found in storage")
@@ -29,6 +29,11 @@ impl OpError {
             ),
         };
 
+        Value::SimpleError(e)
+    }
+    /// Build the message to return according to current error.
+    pub fn to_message_bytes(&self) -> Vec<u8> {
+        let e = self.to_message();
         serde_redis::to_vec(&e).unwrap()
     }
 }
@@ -153,6 +158,41 @@ impl Storage {
                 lock.data.insert(key, cell);
                 Ok(count)
             }
+        }
+    }
+
+    pub fn lrange(&self, key: String, start: i32, end: i32) -> OpResult<Value> {
+        let lock = self.inner.lock().unwrap();
+        if let Some(ValueCell {
+            value: Value::Array(arr),
+            ..
+        }) = lock.data.get(key.as_str())
+        {
+            let start2 = if start >= 0 {
+                start as usize
+            } else {
+                arr.len() - (-1 * start) as usize
+            };
+
+            let end2 = if end >= 0 {
+                end as usize
+            } else {
+                arr.len() - (-1 * end) as usize
+            };
+
+            if end2 < start2 {
+                return Ok(Value::Array(Array::new_empty()));
+            }
+
+            let arr2 = arr
+                .iter()
+                .skip(start2)
+                .take(end2 - start2 + 1)
+                .map(|x| x.to_owned())
+                .collect::<Array>();
+            Ok(Value::Array(arr2))
+        } else {
+            Ok(Value::Array(Array::new_empty()))
         }
     }
 }

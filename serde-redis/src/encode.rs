@@ -26,7 +26,8 @@ impl Encoder {
     fn encode_integer(&mut self, v: i64) {
         self.output.push(b':');
         if v >= 0 {
-            self.output.push(b'+');
+            // Why my redis-cli not work with poisitive sing '+'.
+            // self.output.push(b'+');
         } else {
             self.output.push(b'-');
         }
