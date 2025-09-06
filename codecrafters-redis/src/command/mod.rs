@@ -3,7 +3,7 @@ use serde_redis::{Array, Value};
 use crate::{
     command::{
         echo::handle_echo_command, get::handle_get_command, ping::handle_ping_command,
-        set::handle_set_command,
+        rpush::handle_rpush_command, set::handle_set_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -13,6 +13,7 @@ use crate::{
 mod echo;
 mod get;
 mod ping;
+mod rpush;
 mod set;
 
 pub(crate) async fn dispatch_command(
@@ -37,6 +38,7 @@ pub(crate) async fn dispatch_command(
                     "ECHO" => handle_echo_command(conn, args).await,
                     "SET" => handle_set_command(conn, args, storage).await,
                     "GET" => handle_get_command(conn, args, storage).await,
+                    "RPUSH" => handle_rpush_command(conn, args, storage).await,
                     v => Err(ServerError::InvalidCommand(v.to_string())),
                 }
             }

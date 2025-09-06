@@ -4,7 +4,34 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use serde_redis::Value;
+use serde_redis::{Array, SimpleError, Value};
+
+pub(crate) type OpResult<T> = Result<T, OpError>;
+
+pub(crate) enum OpError {
+    /// No such key in storage.
+    KeyAbsent,
+
+    /// Failed to operate on diffrent type.
+    TypeMismatch,
+}
+
+impl OpError {
+    /// Build the message to return according to current error.
+    pub fn to_message_bytes(&self) -> Vec<u8> {
+        let e = match self {
+            OpError::KeyAbsent => {
+                SimpleError::with_prefix("KEYNOTFOUND", "key not found in storage")
+            }
+            OpError::TypeMismatch => SimpleError::with_prefix(
+                "WRONGTYPE",
+                "Operation against a key holding the wrong kind of value",
+            ),
+        };
+
+        serde_redis::to_vec(&e).unwrap()
+    }
+}
 
 enum LiveValue {
     /// Value exists and is alive.
@@ -88,6 +115,43 @@ impl Storage {
             LiveValue::Absent => {
                 // No value related to key
                 None
+            }
+        }
+    }
+
+    /// Append elements to the list specified by `key`.
+    ///
+    /// If key not present and `create` is true, create a new list.
+    ///
+    /// ## Returns
+    ///
+    /// * `Some(v)` if saved successfully, return the current count of elements.
+    /// * `None` if list not exists and `create` is false, nothing performed in this situaion.
+    pub fn append_list(&self, key: String, value: Array, create: bool) -> OpResult<usize> {
+        let mut lock = self.inner.lock().unwrap();
+
+        match lock.data.get_mut(key.as_str()) {
+            Some(v) => {
+                if let Value::Array(arr) = &mut v.value {
+                    arr.append(value);
+                    Ok(arr.len())
+                } else {
+                    Err(OpError::TypeMismatch)
+                }
+            }
+            None => {
+                if !create {
+                    return Err(OpError::KeyAbsent);
+                }
+
+                let count = value.len();
+                let cell = ValueCell {
+                    value: Value::Array(value),
+                    expiration: None,
+                };
+
+                lock.data.insert(key, cell);
+                Ok(count)
             }
         }
     }

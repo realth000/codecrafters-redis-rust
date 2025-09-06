@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use serde::{de::Visitor, ser::SerializeSeq, Deserialize, Deserializer, Serialize};
 
 use crate::Value;
@@ -11,12 +13,20 @@ impl Array {
         Self(v)
     }
 
+    pub fn new_empty() -> Self {
+        Self(Some(vec![]))
+    }
+
     pub fn null() -> Self {
         Self(None)
     }
 
     pub fn with_values(values: impl Into<Vec<Value>>) -> Self {
         Self(Some(values.into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.as_ref().map(|x| x.len()).unwrap_or_default()
     }
 
     pub fn is_null(&self) -> bool {
@@ -67,6 +77,51 @@ impl Array {
     pub fn pop_front_bulk_string(&mut self) -> Option<String> {
         self.pop_front_bulk_string_bytes()
             .and_then(|x| String::from_utf8(x).ok())
+    }
+
+    pub fn push_back(&mut self, value: Value) -> bool {
+        if self.is_null() {
+            false
+        } else {
+            self.0.as_mut().unwrap().push(value);
+            true
+        }
+    }
+
+    /// Append another array.
+    ///
+    /// Return true if
+    pub fn append(&mut self, mut value: Array) {
+        self.0
+            .as_mut()
+            .map(|v| (*v).append(&mut value.take().unwrap()));
+    }
+}
+
+impl IntoIterator for Array {
+    type Item = Value;
+
+    type IntoIter = <Vec<Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self.0 {
+            Some(v) => v.into_iter(),
+            None => vec![].into_iter(),
+        }
+    }
+}
+
+impl Deref for Array {
+    type Target = [Value];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.as_ref().unwrap()[..]
+    }
+}
+
+impl DerefMut for Array {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0.as_mut().unwrap()[..]
     }
 }
 
