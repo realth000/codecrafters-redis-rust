@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use serde_redis::{Array, SimpleError, Value};
+use serde_redis::{Array, BulkString, SimpleError, Value};
 
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
@@ -180,6 +180,10 @@ impl Storage {
             ..
         }) = lock.data.get(key.as_str())
         {
+            if arr.is_null_or_empty() {
+                return Ok(Value::Array(Array::new_empty()));
+            }
+
             let start2 = if start >= 0 {
                 start as usize
             } else {
@@ -218,12 +222,55 @@ impl Storage {
     ///
     /// * If `key` not present in storage, return `Err(OpError::KeyAbsent)`.
     /// * If the value corresponded to `key` is not an array, return `Err(OpError::TypeMismatch)`.
-    pub fn get_array_length(&self, key: impl AsRef<str>) -> OpResult<usize> {
+    pub fn array_get_length(&self, key: impl AsRef<str>) -> OpResult<usize> {
         let lock = self.inner.lock().unwrap();
 
         if let Some(ValueCell { value, .. }) = lock.data.get(key.as_ref()) {
             if let Value::Array(arr) = value {
                 Ok(arr.len())
+            } else {
+                Err(OpError::TypeMismatch)
+            }
+        } else {
+            Err(OpError::KeyAbsent)
+        }
+    }
+
+    /// Remove the first `count` elements from array with `key`.
+    ///
+    /// * If `key` not present in storage, return `Err(OpError::KeyAbsent)`.
+    /// * If the value corresponded to `key` is not an array, return `Err(OpError::TypeMismatch)`.
+    pub fn array_pop_front(&self, key: impl AsRef<str>, count: Option<usize>) -> OpResult<Value> {
+        let mut lock = self.inner.lock().unwrap();
+
+        if let Some(ValueCell { value, .. }) = lock.data.get_mut(key.as_ref()) {
+            if let Value::Array(arr) = value {
+                if arr.is_empty() {
+                    return Ok(Value::BulkString(BulkString::null()));
+                }
+
+                match count {
+                    Some(c) => {
+                        // Take amount of elements.
+                        let mut ret = Array::new_empty();
+                        for _ in 0..c {
+                            match arr.pop_front() {
+                                Some(v) => {
+                                    ret.push_back(v);
+                                }
+                                None => {
+                                    /* No element left */
+                                    break;
+                                }
+                            }
+                        }
+                        Ok(Value::Array(ret))
+                    }
+                    None => {
+                        // Take all elements.
+                        Ok(arr.pop_front().unwrap())
+                    }
+                }
             } else {
                 Err(OpError::TypeMismatch)
             }
