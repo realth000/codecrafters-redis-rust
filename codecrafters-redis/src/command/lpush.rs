@@ -7,16 +7,16 @@ use crate::{
     storage::Storage,
 };
 
-pub(super) async fn handle_rpush_command(
+pub(super) async fn handle_lpush_command(
     conn: &mut Conn<'_>,
     mut args: Array,
     storage: &mut Storage,
 ) -> ServerResult<()> {
-    conn.log("run command RPUSH");
+    conn.log("run command LPUSH");
     let key = args
         .pop_front_bulk_string()
         .ok_or_else(|| ServerError::InvalidArgs {
-            cmd: "RPUSH",
+            cmd: "LPUSH",
             args: args.clone(),
         })?;
 
@@ -31,7 +31,7 @@ pub(super) async fn handle_rpush_command(
     let content = if values.is_empty() {
         serde_redis::to_vec(&SimpleError::with_prefix("EARG", "empty list args")).unwrap()
     } else {
-        match storage.append_list(key, values, true, false) {
+        match storage.append_list(key, values, true, true) {
             Ok(v) => serde_redis::to_vec(&Value::Integer(Integer::new(v as i64))).unwrap(),
             Err(e) => e.to_message_bytes(),
         }

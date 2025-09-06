@@ -79,6 +79,15 @@ impl Array {
             .and_then(|x| String::from_utf8(x).ok())
     }
 
+    pub fn push_front(&mut self, value: Value) -> bool {
+        if self.is_null() {
+            false
+        } else {
+            self.0.as_mut().unwrap().insert(0, value);
+            true
+        }
+    }
+
     pub fn push_back(&mut self, value: Value) -> bool {
         if self.is_null() {
             false
@@ -89,12 +98,24 @@ impl Array {
     }
 
     /// Append another array.
-    ///
-    /// Return true if
     pub fn append(&mut self, mut value: Array) {
         self.0
             .as_mut()
             .map(|v| (*v).append(&mut value.take().unwrap()));
+    }
+
+    /// Prepend another array.
+    ///
+    /// Insert every element in the array at the head of current array.
+    /// When iterate over the elements to arry, iterate in reverse order.
+    ///
+    /// `[a, b, c].prepend([1, 2]) => [1, 2, a, b, c]`
+    pub fn prepend(&mut self, mut value: Array) {
+        let values = value.take().unwrap();
+        let curr = self.0.as_mut().unwrap();
+        for value in values {
+            curr.insert(0, value);
+        }
     }
 }
 

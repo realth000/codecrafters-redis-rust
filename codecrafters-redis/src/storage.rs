@@ -128,17 +128,29 @@ impl Storage {
     ///
     /// If key not present and `create` is true, create a new list.
     ///
+    /// Set `prepend` to true if want to prepend `value` before the head of current element.
+    ///
     /// ## Returns
     ///
     /// * `Some(v)` if saved successfully, return the current count of elements.
     /// * `None` if list not exists and `create` is false, nothing performed in this situaion.
-    pub fn append_list(&self, key: String, value: Array, create: bool) -> OpResult<usize> {
+    pub fn append_list(
+        &self,
+        key: String,
+        value: Array,
+        create: bool,
+        prepend: bool,
+    ) -> OpResult<usize> {
         let mut lock = self.inner.lock().unwrap();
 
         match lock.data.get_mut(key.as_str()) {
             Some(v) => {
                 if let Value::Array(arr) = &mut v.value {
-                    arr.append(value);
+                    if prepend {
+                        arr.prepend(value);
+                    } else {
+                        arr.append(value);
+                    }
                     Ok(arr.len())
                 } else {
                     Err(OpError::TypeMismatch)

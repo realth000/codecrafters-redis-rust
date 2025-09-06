@@ -2,8 +2,9 @@ use serde_redis::{Array, Value};
 
 use crate::{
     command::{
-        echo::handle_echo_command, get::handle_get_command, lrange::handle_lrange_command,
-        ping::handle_ping_command, rpush::handle_rpush_command, set::handle_set_command,
+        echo::handle_echo_command, get::handle_get_command, lpush::handle_lpush_command,
+        lrange::handle_lrange_command, ping::handle_ping_command, rpush::handle_rpush_command,
+        set::handle_set_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -12,6 +13,7 @@ use crate::{
 
 mod echo;
 mod get;
+mod lpush;
 mod lrange;
 mod ping;
 mod rpush;
@@ -41,6 +43,7 @@ pub(crate) async fn dispatch_command(
                     "GET" => handle_get_command(conn, args, storage).await,
                     "RPUSH" => handle_rpush_command(conn, args, storage).await,
                     "LRANGE" => handle_lrange_command(conn, args, storage).await,
+                    "LPUSH" => handle_lpush_command(conn, args, storage).await,
                     v => Err(ServerError::InvalidCommand(v.to_string())),
                 }
             }
