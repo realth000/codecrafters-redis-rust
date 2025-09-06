@@ -171,7 +171,13 @@ impl Storage {
             let start2 = if start >= 0 {
                 start as usize
             } else {
-                arr.len() - (-1 * start) as usize
+                let s = start.abs();
+                if arr.len() < (s as usize) {
+                    // [a, b, c] => start=-5, reset start to 0
+                    0
+                } else {
+                    arr.len() - (-1 * start) as usize
+                }
             };
 
             let end2 = if end >= 0 {
