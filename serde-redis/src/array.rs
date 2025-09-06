@@ -311,7 +311,7 @@ mod test {
                 Value::BulkString(BulkString::new(b"I'm the Bulk String")),
             ])),
         ]);
-        let s0 = "*2\r\n:+12321\r\n$19\r\nI'm the Bulk String\r\n";
+        let s0 = "*2\r\n:12321\r\n$19\r\nI'm the Bulk String\r\n";
         let s1 = format!("*2\r\n-ERR err message\r\n{s0}");
         assert_eq!(to_vec(&v1).unwrap(), s1.as_bytes());
     }

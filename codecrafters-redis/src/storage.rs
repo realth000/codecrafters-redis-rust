@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Condvar, Mutex},
     time::{Duration, SystemTime},
 };
 
-use serde_redis::{Array, BulkString, SimpleError, Value};
+use serde_redis::{Array, SimpleError, Value};
 
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
@@ -74,9 +74,35 @@ impl ValueCell {
     }
 }
 
+pub(crate) struct LpopBlockedHandle {
+    pub lock: Mutex<Option<Value>>,
+    pub condvar: Condvar,
+}
+
+pub(crate) struct LpopBlockedTask {
+    key: String,
+    handle: Arc<LpopBlockedHandle>,
+}
+
+impl LpopBlockedTask {
+    pub fn new(key: String) -> Self {
+        let handle = Arc::new(LpopBlockedHandle {
+            lock: Mutex::new(None),
+            condvar: Condvar::new(),
+        });
+
+        Self { key, handle }
+    }
+
+    pub fn clone_handle(&self) -> Arc<LpopBlockedHandle> {
+        self.handle.clone()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Storage {
     inner: Arc<Mutex<StorageInner>>,
+    lpop_blocked_task: Arc<Mutex<Vec<LpopBlockedTask>>>,
 }
 
 struct StorageInner {
@@ -89,6 +115,7 @@ impl Storage {
             inner: Arc::new(Mutex::new(StorageInner {
                 data: HashMap::new(),
             })),
+            lpop_blocked_task: Arc::new(Mutex::new(vec![])),
         }
     }
 
@@ -124,7 +151,7 @@ impl Storage {
         }
     }
 
-    /// Append elements to the list specified by `key`.
+    /// Insert elements to the list specified by `key`.
     ///
     /// If key not present and `create` is true, create a new list.
     ///
@@ -134,14 +161,42 @@ impl Storage {
     ///
     /// * `Some(v)` if saved successfully, return the current count of elements.
     /// * `None` if list not exists and `create` is false, nothing performed in this situaion.
-    pub fn append_list(
+    pub fn insert_list(
         &self,
         key: String,
-        value: Array,
+        mut value: Array,
         create: bool,
         prepend: bool,
     ) -> OpResult<usize> {
         let mut lock = self.inner.lock().unwrap();
+
+        // Count of elements that gave to BLPOP tasks.
+        // Elements are sent to those tasks first, then save in list.
+        // But we should return the orignal count of elements to the
+        // client gives us `value`, use this count to balance it.
+        let mut interupted_count = 0;
+        let mut lpop_lock = self.lpop_blocked_task.lock().unwrap();
+        loop {
+            if value.is_empty() {
+                break;
+            }
+            match lpop_lock.iter().position(|task| task.key == key) {
+                Some(pos) => {
+                    // Find a task waiting for current list.
+                    let v = value.pop_front().unwrap(); // Not empty for sure.
+                    let task_to_feed = lpop_lock.remove(pos);
+                    let mut task_to_feed_lock = task_to_feed.handle.lock.lock().unwrap();
+                    *task_to_feed_lock = Some(v);
+                    task_to_feed.handle.condvar.notify_all();
+                    interupted_count += 1;
+                }
+                None => {
+                    // No one in the blocked task queue is waiting for
+                    // current `key` list, break and go ahead.
+                    break;
+                }
+            }
+        }
 
         match lock.data.get_mut(key.as_str()) {
             Some(v) => {
@@ -151,7 +206,7 @@ impl Storage {
                     } else {
                         arr.append(value);
                     }
-                    Ok(arr.len())
+                    Ok(arr.len() + interupted_count)
                 } else {
                     Err(OpError::TypeMismatch)
                 }
@@ -168,7 +223,7 @@ impl Storage {
                 };
 
                 lock.data.insert(key, cell);
-                Ok(count)
+                Ok(count + interupted_count)
             }
         }
     }
@@ -240,13 +295,17 @@ impl Storage {
     ///
     /// * If `key` not present in storage, return `Err(OpError::KeyAbsent)`.
     /// * If the value corresponded to `key` is not an array, return `Err(OpError::TypeMismatch)`.
-    pub fn array_pop_front(&self, key: impl AsRef<str>, count: Option<usize>) -> OpResult<Value> {
+    pub fn array_pop_front(
+        &self,
+        key: impl AsRef<str>,
+        count: Option<usize>,
+    ) -> OpResult<Option<Value>> {
         let mut lock = self.inner.lock().unwrap();
 
         if let Some(ValueCell { value, .. }) = lock.data.get_mut(key.as_ref()) {
             if let Value::Array(arr) = value {
                 if arr.is_empty() {
-                    return Ok(Value::BulkString(BulkString::null()));
+                    return Ok(None);
                 }
 
                 match count {
@@ -264,11 +323,11 @@ impl Storage {
                                 }
                             }
                         }
-                        Ok(Value::Array(ret))
+                        Ok(Some(Value::Array(ret)))
                     }
                     None => {
-                        // Take all elements.
-                        Ok(arr.pop_front().unwrap())
+                        // Take the first element.
+                        Ok(Some(arr.pop_front().unwrap()))
                     }
                 }
             } else {
@@ -277,5 +336,10 @@ impl Storage {
         } else {
             Err(OpError::KeyAbsent)
         }
+    }
+
+    pub fn lpop_add_block_task(&mut self, task: LpopBlockedTask) {
+        let mut lock = self.lpop_blocked_task.lock().unwrap();
+        lock.push(task);
     }
 }

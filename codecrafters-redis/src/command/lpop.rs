@@ -37,7 +37,8 @@ pub(super) async fn handle_lpop_command(
     }
 
     let content = match storage.array_pop_front(key, count) {
-        Ok(v) => v,
+        Ok(Some(v)) => v,
+        Ok(None) => Value::BulkString(BulkString::null()),
         Err(e) => match e {
             OpError::KeyAbsent => Value::Integer(Integer::new(0)),
             _ => e.to_message(),

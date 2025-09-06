@@ -31,11 +31,13 @@ pub(super) async fn handle_rpush_command(
     let content = if values.is_empty() {
         serde_redis::to_vec(&SimpleError::with_prefix("EARG", "empty list args")).unwrap()
     } else {
-        match storage.append_list(key, values, true, false) {
+        match storage.insert_list(key, values, true, false) {
             Ok(v) => serde_redis::to_vec(&Value::Integer(Integer::new(v as i64))).unwrap(),
             Err(e) => e.to_message_bytes(),
         }
     };
+
+    conn.log(format!(">>> RPUSH resp: {content:?}"));
 
     conn.stream
         .write(&content)
