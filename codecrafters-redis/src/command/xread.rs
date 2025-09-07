@@ -30,13 +30,13 @@ pub(super) async fn handle_xread_command(
     storage: &mut Storage,
 ) -> ServerResult<()> {
     conn.log("run command XREAD");
-    let key = args
+    let _streams = args
         .pop_front_bulk_string()
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XREAD",
             args: args.clone(),
         })?;
-    let _streams = args
+    let key = args
         .pop_front_bulk_string()
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XREAD",
