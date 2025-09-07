@@ -3,8 +3,24 @@ use serde_redis::Array;
 use crate::{
     conn::Conn,
     error::{ServerError, ServerResult},
-    storage::Storage,
+    storage::{Storage, StreamId},
 };
+
+fn parse_stream_id(value: String) -> Option<StreamId> {
+    match value.split_once('-') {
+        Some((raw_time_id, raw_seq_id)) => {
+            match (raw_time_id.parse::<u64>(), raw_seq_id.parse::<u64>()) {
+                (Ok(time_id), Ok(seq_id)) => Some(StreamId::new(time_id, seq_id)),
+                (Ok(time_id), Err(..)) if raw_seq_id == "*" => Some(StreamId::PartialAuto(time_id)),
+                _ => None,
+            }
+        }
+        None => value
+            .parse::<u64>()
+            .ok()
+            .map(|id| StreamId::PartialAuto(id)),
+    }
+}
 
 pub(super) async fn handle_xrange_command(
     conn: &mut Conn<'_>,
@@ -20,7 +36,7 @@ pub(super) async fn handle_xrange_command(
         })?;
     let start = args
         .pop_front_bulk_string()
-        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(parse_stream_id)
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XRANGE",
             args: args.clone(),
@@ -28,7 +44,7 @@ pub(super) async fn handle_xrange_command(
 
     let end = args
         .pop_front_bulk_string()
-        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(parse_stream_id)
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XRANGE",
             args: args.clone(),

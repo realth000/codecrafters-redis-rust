@@ -429,7 +429,7 @@ impl Storage {
         }
     }
 
-    pub fn stream_get_range(&self, key: String, start: u64, end: u64) -> OpResult<Value> {
+    pub fn stream_get_range(&self, key: String, start: StreamId, end: StreamId) -> OpResult<Value> {
         let lock = self.inner.lock().unwrap();
         match lock.stream.get(key.as_str()) {
             Some(s) => s.get_range(start, end),

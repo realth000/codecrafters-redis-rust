@@ -1,6 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use serde_redis::{Array, BulkString, Integer, SimpleString, Value};
+use serde_redis::{Array, BulkString, SimpleString, Value};
 
 use crate::storage::{OpError, OpResult};
 
@@ -34,11 +34,11 @@ pub struct StreamEntry {
     last_entry_seq_id: u64,
 
     /// All datas in stream.
-    data: HashMap<u64, Vec<Value>>,
+    data: BTreeMap<u64, Vec<Value>>,
 }
 
 impl StreamEntry {
-    fn new(seq_id: u64, values: HashMap<u64, Vec<Value>>) -> Self {
+    fn new(seq_id: u64, values: BTreeMap<u64, Vec<Value>>) -> Self {
         Self {
             last_entry_seq_id: seq_id,
             data: values,
@@ -92,7 +92,7 @@ impl Stream {
                 // Insert new entry.
                 self.entries.insert(
                     time_id,
-                    StreamEntry::new(seq_id, HashMap::from([(seq_id, values)])),
+                    StreamEntry::new(seq_id, BTreeMap::from([(seq_id, values)])),
                 );
                 self.last_entry_time_id = time_id;
                 Ok(StreamId::new(time_id, seq_id))
@@ -106,20 +106,45 @@ impl Stream {
             .map_or_else(|| 0, |s| s.last_entry_seq_id + 1)
     }
 
-    pub fn get_range(&self, start: u64, end: u64) -> OpResult<Value> {
+    pub fn get_range(&self, start: StreamId, end: StreamId) -> OpResult<Value> {
         let mut array = Array::new_empty();
-        for (id, v) in self.entries.iter() {
-            if &start <= id && id <= &end {
-                let x = v
-                    .data
-                    .clone()
-                    .into_iter()
-                    .map(|x| Value::Array(Array::with_values(x.1)))
-                    .collect::<Vec<_>>();
-                array.push_back(Value::SimpleString(SimpleString::new(format!(
-                    "{start}-{end}"
+        let (start_time_id, start_seq_id) = match start {
+            StreamId::Value { time_id, seq_id } => (time_id, seq_id),
+            StreamId::Auto => unreachable!("Auto stream id is not intend to use in range command"),
+            StreamId::PartialAuto(time_id) => (time_id, 0),
+        };
+
+        let (end_time_id, end_seq_id) = match end {
+            StreamId::Value { time_id, seq_id } => (time_id, Some(seq_id)),
+            StreamId::Auto => unreachable!("Auto stream id is not intend to use in range command"),
+            StreamId::PartialAuto(time_id) => (time_id, None),
+        };
+        for (time_id, entry) in self.entries.iter() {
+            if time_id < &start_time_id {
+                continue;
+            }
+            if &end_time_id < time_id {
+                // BTreeMap is orderd, we break the loop asap.
+                break;
+            }
+
+            for (seq_id, values) in entry.data.iter() {
+                let mut collected_values = vec![];
+                let end_seq_id = end_seq_id.unwrap_or_else(|| entry.last_entry_seq_id);
+                if seq_id < &start_seq_id {
+                    continue;
+                }
+                if &end_seq_id < seq_id {
+                    // BTreeMap is orderd, we break the loop asap.
+                    break;
+                }
+
+                collected_values.push(Value::SimpleString(SimpleString::new(format!(
+                    "{}-{}",
+                    time_id, seq_id
                 ))));
-                array.push_back(Value::Array(Array::with_values(x)));
+                collected_values.push(Value::Array(Array::with_values(values.to_owned())));
+                array.push_back(Value::Array(Array::with_values(collected_values)));
             }
         }
         Ok(Value::Array(array))
