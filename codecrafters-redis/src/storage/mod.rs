@@ -39,7 +39,7 @@ impl OpError {
                 "Operation against a key holding the wrong kind of value",
             ),
             OpError::InvalidStreamId => {
-                SimpleError::with_prefix("ERR", "ID specified in XADD must be greater than 0-0")
+                SimpleError::with_prefix("ERR", "The ID specified in XADD must be greater than 0-0")
             }
             OpError::TooSmallStreamId => SimpleError::with_prefix(
                 "ERR",
