@@ -58,10 +58,9 @@ pub(super) async fn handle_xread_command(
         .map_err(|x| x.to_message())
         .unwrap();
 
-    let value = Value::Array(Array::with_values(vec![
-        Value::BulkString(BulkString::new(key)),
-        value,
-    ]));
+    let value = Value::Array(Array::with_values(vec![Value::Array(Array::with_values(
+        vec![Value::BulkString(BulkString::new(key)), value],
+    ))]));
 
     conn.write_value(&value).await?;
     Ok(())
