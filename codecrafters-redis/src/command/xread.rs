@@ -51,7 +51,7 @@ pub(super) async fn handle_xread_command(
         })?;
 
     let end = StreamId::Auto;
-    conn.log(format!("XREAD {start:?}..={end:?}"));
+    conn.log(format!("XREAD key={key}, {start:?}..={end:?}"));
 
     let value = storage
         .stream_get_range(key.clone(), start, end)
