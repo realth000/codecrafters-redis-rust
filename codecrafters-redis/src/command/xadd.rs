@@ -3,7 +3,7 @@ use serde_redis::{Array, BulkString, Value};
 use crate::{
     conn::Conn,
     error::{ServerError, ServerResult},
-    storage::Storage,
+    storage::{Storage, StreamId},
 };
 
 pub(super) async fn handle_xadd_command(
@@ -20,15 +20,23 @@ pub(super) async fn handle_xadd_command(
             args: args.clone(),
         })?;
 
-    let (time_id, seq_id) = args
+    let stream_id = args
         .pop_front_bulk_string()
         .and_then(|id| {
-            let computed_ids = id
-                .split_once('-')
-                .map(|(time_id, seq_id)| (time_id.parse::<u32>(), seq_id.parse::<u32>()));
-            match computed_ids {
-                Some((Ok(v1), Ok(v2))) => Some((v1, v2)),
-                _ => None,
+            if id == "*" {
+                return Some(StreamId::Auto);
+            }
+            match id.split_once('-') {
+                Some((raw_time_id, raw_seq_id)) => {
+                    match (raw_time_id.parse::<u128>(), raw_seq_id.parse::<u128>()) {
+                        (Ok(time_id), Ok(seq_id)) => Some(StreamId::new(time_id, seq_id)),
+                        (Ok(time_id), Err(..)) if raw_seq_id == "*" => {
+                            Some(StreamId::PartialAuto(time_id))
+                        }
+                        _ => None,
+                    }
+                }
+                None => None,
             }
         })
         .ok_or_else(|| ServerError::InvalidArgs {
@@ -49,10 +57,8 @@ pub(super) async fn handle_xadd_command(
         });
     }
 
-    conn.log(format!(
-        "XADD: key={key}, time_id={time_id}, seq_id={seq_id}"
-    ));
-    let value = match storage.stream_add_value(key, time_id, seq_id, values.take().unwrap()) {
+    conn.log(format!("XADD: key={key}, id={stream_id:?}"));
+    let value = match storage.stream_add_value(key, stream_id, values.take().unwrap()) {
         Ok(v) => Value::BulkString(v.to_bulk_string()),
         Err(e) => e.to_message(),
     };

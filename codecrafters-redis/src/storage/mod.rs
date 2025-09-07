@@ -1,16 +1,17 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde_redis::{Array, SimpleError, Value};
 use tokio::sync::{oneshot, Notify};
 
-use crate::storage::stream::{Stream, StreamId};
+use stream::Stream;
 
 mod stream;
 
+pub use stream::StreamId;
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
 pub(crate) enum OpError {
@@ -131,6 +132,14 @@ pub(crate) struct Storage {
 struct StorageInner {
     data: HashMap<String, ValueCell>,
     stream: HashMap<String, Stream>,
+}
+
+impl StorageInner {
+    fn get_next_seq_id(&self, key: impl AsRef<str>, time_id: u128) -> u128 {
+        self.stream
+            .get(key.as_ref())
+            .map_or_else(|| 0, |s| s.get_next_seq_id(time_id))
+    }
 }
 
 impl Storage {
@@ -388,11 +397,27 @@ impl Storage {
     pub fn stream_add_value(
         &mut self,
         key: String,
-        time_id: u32,
-        seq_id: u32,
+        stream_id: StreamId,
         value: Vec<Value>,
     ) -> OpResult<StreamId> {
         let mut lock = self.inner.lock().unwrap();
+        let (time_id, seq_id) = match stream_id {
+            StreamId::Value { time_id, seq_id } => (time_id, seq_id),
+            StreamId::Auto => (
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+                0,
+            ),
+            StreamId::PartialAuto(time_id) => {
+                let mut seq_id = lock.get_next_seq_id(key.as_str(), time_id);
+                if time_id == 0 && seq_id == 0 {
+                    seq_id = 1;
+                }
+                (time_id, seq_id)
+            }
+        };
         match lock.stream.get_mut(key.as_str()) {
             Some(s) => s.add_entry(time_id, seq_id, value),
             None => {

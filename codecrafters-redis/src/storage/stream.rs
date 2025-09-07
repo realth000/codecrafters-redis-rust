@@ -5,18 +5,24 @@ use serde_redis::{BulkString, Value};
 use crate::storage::{OpError, OpResult};
 
 #[derive(Debug, Clone)]
-pub struct StreamId {
-    time_id: u32,
-    seq_id: u32,
+pub enum StreamId {
+    Value { time_id: u128, seq_id: u128 },
+    Auto,
+    PartialAuto(/* time_id: */ u128),
 }
 
 impl StreamId {
-    fn new(time_id: u32, seq_id: u32) -> Self {
-        Self { time_id, seq_id }
+    pub fn new(time_id: u128, seq_id: u128) -> Self {
+        Self::Value { time_id, seq_id }
     }
 
     pub fn to_bulk_string(self) -> BulkString {
-        BulkString::new(format!("{}-{}", self.time_id, self.seq_id))
+        let s = match self {
+            StreamId::Value { time_id, seq_id } => format!("{}-{}", time_id, seq_id),
+            StreamId::Auto => "*".into(),
+            StreamId::PartialAuto(time_id) => format!("{time_id}-*"),
+        };
+        BulkString::new(s)
     }
 }
 
@@ -25,14 +31,14 @@ pub struct StreamEntry {
     /// Sequence number part of name in the last entry.
     ///
     /// Should be more than zero.
-    last_entry_seq_id: u32,
+    last_entry_seq_id: u128,
 
     /// All datas in stream.
-    data: HashMap<u32, Vec<Value>>,
+    data: HashMap<u128, Vec<Value>>,
 }
 
 impl StreamEntry {
-    fn new(seq_id: u32, values: HashMap<u32, Vec<Value>>) -> Self {
+    fn new(seq_id: u128, values: HashMap<u128, Vec<Value>>) -> Self {
         Self {
             last_entry_seq_id: seq_id,
             data: values,
@@ -43,10 +49,10 @@ impl StreamEntry {
 #[derive(Debug, Clone)]
 pub struct Stream {
     /// Timestamp part of name in the last entry.
-    last_entry_time_id: u32,
+    last_entry_time_id: u128,
 
     /// All entries in stream.
-    entries: HashMap<u32, StreamEntry>,
+    entries: HashMap<u128, StreamEntry>,
 }
 
 impl Stream {
@@ -59,8 +65,8 @@ impl Stream {
 
     pub fn add_entry(
         &mut self,
-        time_id: u32,
-        seq_id: u32,
+        time_id: u128,
+        seq_id: u128,
         values: Vec<Value>,
     ) -> OpResult<StreamId> {
         if time_id == 0 && seq_id == 0 {
@@ -72,7 +78,7 @@ impl Stream {
 
         match self.entries.get_mut(&time_id) {
             Some(entry) => {
-                // Add new record in existing entry.
+                // Add new record to existing entry.
                 if seq_id <= entry.last_entry_seq_id {
                     return Err(OpError::TooSmallStreamId);
                 }
@@ -92,5 +98,11 @@ impl Stream {
                 Ok(StreamId::new(time_id, seq_id))
             }
         }
+    }
+
+    pub fn get_next_seq_id(&self, time_id: u128) -> u128 {
+        self.entries
+            .get(&time_id)
+            .map_or_else(|| 0, |s| s.last_entry_seq_id + 1)
     }
 }
