@@ -7,6 +7,10 @@ use std::{
 use serde_redis::{Array, SimpleError, Value};
 use tokio::sync::{oneshot, Notify};
 
+use crate::storage::stream::{Stream, StreamId};
+
+mod stream;
+
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
 pub(crate) enum OpError {
@@ -15,11 +19,17 @@ pub(crate) enum OpError {
 
     /// Failed to operate on diffrent type.
     TypeMismatch,
+
+    /// Stream id is less or equal to the last id.
+    TooSmallStreamId,
+
+    /// Stream id should be greater than "0-0".
+    InvalidStreamId,
 }
 
 impl OpError {
     /// Build the message to return according to current error.
-    pub fn to_message(&self) -> Value {
+    pub fn to_message(self) -> Value {
         let e = match self {
             OpError::KeyAbsent => {
                 SimpleError::with_prefix("KEYNOTFOUND", "key not found in storage")
@@ -28,12 +38,19 @@ impl OpError {
                 "WRONGTYPE",
                 "Operation against a key holding the wrong kind of value",
             ),
+            OpError::InvalidStreamId => {
+                SimpleError::with_prefix("ERR", "ID specified in XADD must be greater than 0-0")
+            }
+            OpError::TooSmallStreamId => SimpleError::with_prefix(
+                "ERR",
+                "The ID specified in XADD is equal or smaller than the target stream top item",
+            ),
         };
 
         Value::SimpleError(e)
     }
     /// Build the message to return according to current error.
-    pub fn to_message_bytes(&self) -> Vec<u8> {
+    pub fn to_message_bytes(self) -> Vec<u8> {
         let e = self.to_message();
         serde_redis::to_vec(&e).unwrap()
     }
@@ -113,6 +130,7 @@ pub(crate) struct Storage {
 
 struct StorageInner {
     data: HashMap<String, ValueCell>,
+    stream: HashMap<String, Stream>,
 }
 
 impl Storage {
@@ -120,6 +138,7 @@ impl Storage {
         Self {
             inner: Arc::new(Mutex::new(StorageInner {
                 data: HashMap::new(),
+                stream: HashMap::new(),
             })),
             lpop_blocked_task: Arc::new(Mutex::new(vec![])),
         }
@@ -356,8 +375,31 @@ impl Storage {
         match lock.data.get(key.as_ref()).map(|cell| cell.live_value()) {
             Some(LiveValue::Live(v)) => Ok(v.simple_name()),
             Some(LiveValue::Expired) | Some(LiveValue::Absent) | None => {
-                // Expired.
-                Err(OpError::KeyAbsent)
+                if lock.stream.contains_key(key.as_ref()) {
+                    Ok("stream")
+                } else {
+                    // Expired.
+                    Err(OpError::KeyAbsent)
+                }
+            }
+        }
+    }
+
+    pub fn stream_add_value(
+        &mut self,
+        key: String,
+        time_id: u32,
+        seq_id: u32,
+        value: Vec<Value>,
+    ) -> OpResult<StreamId> {
+        let mut lock = self.inner.lock().unwrap();
+        match lock.stream.get_mut(key.as_str()) {
+            Some(s) => s.add_entry(time_id, seq_id, value),
+            None => {
+                let mut s = Stream::new();
+                let ret = s.add_entry(time_id, seq_id, value);
+                lock.stream.insert(key, s);
+                ret
             }
         }
     }

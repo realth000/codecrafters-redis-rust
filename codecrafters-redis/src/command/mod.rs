@@ -5,7 +5,7 @@ use crate::{
         blpop::handle_blpop_command, echo::handle_echo_command, get::handle_get_command,
         llen::handle_llen_command, lpop::handle_lpop_command, lpush::handle_lpush_command,
         lrange::handle_lrange_command, ping::handle_ping_command, rpush::handle_rpush_command,
-        set::handle_set_command, tipe::handle_type_command,
+        set::handle_set_command, tipe::handle_type_command, xadd::handle_xadd_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -23,6 +23,7 @@ mod ping;
 mod rpush;
 mod set;
 mod tipe;
+mod xadd;
 
 pub(crate) async fn dispatch_command(
     storage: &mut Storage,
@@ -53,6 +54,7 @@ pub(crate) async fn dispatch_command(
                     "LPOP" => handle_lpop_command(conn, args, storage).await,
                     "BLPOP" => handle_blpop_command(conn, args, storage).await,
                     "TYPE" => handle_type_command(conn, args, storage).await,
+                    "XADD" => handle_xadd_command(conn, args, storage).await,
                     v => Err(ServerError::InvalidCommand(v.to_string())),
                 }
             }
