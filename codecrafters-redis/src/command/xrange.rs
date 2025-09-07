@@ -36,7 +36,13 @@ pub(super) async fn handle_xrange_command(
         })?;
     let start = args
         .pop_front_bulk_string()
-        .and_then(parse_stream_id)
+        .and_then(|s| {
+            if s == "-" {
+                Some(StreamId::Auto)
+            } else {
+                parse_stream_id(s)
+            }
+        })
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XRANGE",
             args: args.clone(),
@@ -44,7 +50,13 @@ pub(super) async fn handle_xrange_command(
 
     let end = args
         .pop_front_bulk_string()
-        .and_then(parse_stream_id)
+        .and_then(|s| {
+            if s == "+" {
+                Some(StreamId::Auto)
+            } else {
+                parse_stream_id(s)
+            }
+        })
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XRANGE",
             args: args.clone(),

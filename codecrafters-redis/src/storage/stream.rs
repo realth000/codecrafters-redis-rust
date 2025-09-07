@@ -110,15 +110,18 @@ impl Stream {
         let mut array = Array::new_empty();
         let (start_time_id, start_seq_id) = match start {
             StreamId::Value { time_id, seq_id } => (time_id, seq_id),
-            StreamId::Auto => unreachable!("Auto stream id is not intend to use in range command"),
+            StreamId::Auto => (0, 0),
             StreamId::PartialAuto(time_id) => (time_id, 0),
         };
 
         let (end_time_id, end_seq_id) = match end {
-            StreamId::Value { time_id, seq_id } => (time_id, Some(seq_id)),
-            StreamId::Auto => unreachable!("Auto stream id is not intend to use in range command"),
-            StreamId::PartialAuto(time_id) => (time_id, None),
+            StreamId::Value { time_id, seq_id } => (Some(time_id), Some(seq_id)),
+            StreamId::Auto => (None, None),
+            StreamId::PartialAuto(time_id) => (Some(time_id), None),
         };
+
+        let end_time_id = end_time_id.unwrap_or_else(|| self.last_entry_time_id);
+
         for (time_id, entry) in self.entries.iter() {
             if time_id < &start_time_id {
                 continue;
