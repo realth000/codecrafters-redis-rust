@@ -135,7 +135,7 @@ struct StorageInner {
 }
 
 impl StorageInner {
-    fn get_next_seq_id(&self, key: impl AsRef<str>, time_id: u128) -> u128 {
+    fn get_next_seq_id(&self, key: impl AsRef<str>, time_id: u64) -> u64 {
         self.stream
             .get(key.as_ref())
             .map_or_else(|| 0, |s| s.get_next_seq_id(time_id))
@@ -407,7 +407,7 @@ impl Storage {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
-                    .as_millis(),
+                    .as_millis() as u64,
                 0,
             ),
             StreamId::PartialAuto(time_id) => {
@@ -426,6 +426,14 @@ impl Storage {
                 lock.stream.insert(key, s);
                 ret
             }
+        }
+    }
+
+    pub fn stream_get_range(&self, key: String, start: u64, end: u64) -> OpResult<Value> {
+        let lock = self.inner.lock().unwrap();
+        match lock.stream.get(key.as_str()) {
+            Some(s) => s.get_range(start, end),
+            None => Err(OpError::KeyAbsent),
         }
     }
 }

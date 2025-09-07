@@ -1,18 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use serde_redis::{BulkString, Value};
+use serde_redis::{Array, BulkString, Integer, SimpleString, Value};
 
 use crate::storage::{OpError, OpResult};
 
 #[derive(Debug, Clone)]
 pub enum StreamId {
-    Value { time_id: u128, seq_id: u128 },
+    Value { time_id: u64, seq_id: u64 },
     Auto,
-    PartialAuto(/* time_id: */ u128),
+    PartialAuto(/* time_id: */ u64),
 }
 
 impl StreamId {
-    pub fn new(time_id: u128, seq_id: u128) -> Self {
+    pub fn new(time_id: u64, seq_id: u64) -> Self {
         Self::Value { time_id, seq_id }
     }
 
@@ -31,14 +31,14 @@ pub struct StreamEntry {
     /// Sequence number part of name in the last entry.
     ///
     /// Should be more than zero.
-    last_entry_seq_id: u128,
+    last_entry_seq_id: u64,
 
     /// All datas in stream.
-    data: HashMap<u128, Vec<Value>>,
+    data: HashMap<u64, Vec<Value>>,
 }
 
 impl StreamEntry {
-    fn new(seq_id: u128, values: HashMap<u128, Vec<Value>>) -> Self {
+    fn new(seq_id: u64, values: HashMap<u64, Vec<Value>>) -> Self {
         Self {
             last_entry_seq_id: seq_id,
             data: values,
@@ -49,24 +49,24 @@ impl StreamEntry {
 #[derive(Debug, Clone)]
 pub struct Stream {
     /// Timestamp part of name in the last entry.
-    last_entry_time_id: u128,
+    last_entry_time_id: u64,
 
     /// All entries in stream.
-    entries: HashMap<u128, StreamEntry>,
+    entries: BTreeMap<u64, StreamEntry>,
 }
 
 impl Stream {
     pub fn new() -> Self {
         Self {
             last_entry_time_id: 0,
-            entries: HashMap::new(),
+            entries: BTreeMap::new(),
         }
     }
 
     pub fn add_entry(
         &mut self,
-        time_id: u128,
-        seq_id: u128,
+        time_id: u64,
+        seq_id: u64,
         values: Vec<Value>,
     ) -> OpResult<StreamId> {
         if time_id == 0 && seq_id == 0 {
@@ -100,9 +100,28 @@ impl Stream {
         }
     }
 
-    pub fn get_next_seq_id(&self, time_id: u128) -> u128 {
+    pub fn get_next_seq_id(&self, time_id: u64) -> u64 {
         self.entries
             .get(&time_id)
             .map_or_else(|| 0, |s| s.last_entry_seq_id + 1)
+    }
+
+    pub fn get_range(&self, start: u64, end: u64) -> OpResult<Value> {
+        let mut array = Array::new_empty();
+        for (id, v) in self.entries.iter() {
+            if &start <= id && id <= &end {
+                let x = v
+                    .data
+                    .clone()
+                    .into_iter()
+                    .map(|x| Value::Array(Array::with_values(x.1)))
+                    .collect::<Vec<_>>();
+                array.push_back(Value::SimpleString(SimpleString::new(format!(
+                    "{start}-{end}"
+                ))));
+                array.push_back(Value::Array(Array::with_values(x)));
+            }
+        }
+        Ok(Value::Array(array))
     }
 }

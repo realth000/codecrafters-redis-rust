@@ -28,7 +28,7 @@ pub(super) async fn handle_xadd_command(
             }
             match id.split_once('-') {
                 Some((raw_time_id, raw_seq_id)) => {
-                    match (raw_time_id.parse::<u128>(), raw_seq_id.parse::<u128>()) {
+                    match (raw_time_id.parse::<u64>(), raw_seq_id.parse::<u64>()) {
                         (Ok(time_id), Ok(seq_id)) => Some(StreamId::new(time_id, seq_id)),
                         (Ok(time_id), Err(..)) if raw_seq_id == "*" => {
                             Some(StreamId::PartialAuto(time_id))
