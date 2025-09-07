@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde_redis::{Array, BulkString, SimpleError, Value};
 
 use crate::{
@@ -24,13 +26,32 @@ pub(super) async fn handle_xread_command(
     storage: &mut Storage,
 ) -> ServerResult<()> {
     conn.log("run command XREAD");
-    // Read the "streams" argument after "XREAD".
-    let _streams = args
+    let subcommand = args
         .pop_front_bulk_string()
         .ok_or_else(|| ServerError::InvalidArgs {
             cmd: "XREAD",
             args: args.clone(),
         })?;
+
+    if subcommand == "block" {
+        // Run in block mode.
+        let block_duration = args
+            .pop_front_bulk_string()
+            .and_then(|x| x.parse::<u64>().ok())
+            .ok_or_else(|| ServerError::InvalidArgs {
+                cmd: "XREAD",
+                args: args.clone(),
+            })?;
+        tokio::time::sleep(Duration::from_millis(block_duration)).await;
+
+        // Read the "streams" argument after "XREAD".
+        let _stream = args
+            .pop_front_bulk_string()
+            .ok_or_else(|| ServerError::InvalidArgs {
+                cmd: "XREAD",
+                args: args.clone(),
+            })?;
+    }
 
     let mut stream_names = vec![];
     let mut stream_ids = vec![];
@@ -77,6 +98,12 @@ pub(super) async fn handle_xread_command(
             .map_err(|x| x.to_message())
             .unwrap();
 
+        if let Value::Array(arr) = &v {
+            if arr.is_empty() {
+                continue;
+            }
+        }
+
         let arr = Value::Array(Array::with_values(vec![
             Value::BulkString(BulkString::new(query.0)),
             v,
@@ -84,7 +111,11 @@ pub(super) async fn handle_xread_command(
         results.push(arr);
     }
 
-    let value = Value::Array(Array::with_values(results));
+    let value = if results.is_empty() {
+        Value::Array(Array::null())
+    } else {
+        Value::Array(Array::with_values(results))
+    };
 
     conn.write_value(&value).await?;
     Ok(())
