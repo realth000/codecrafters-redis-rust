@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use serde_redis::{Array, SimpleError, Value};
+use serde_redis::{Array, SimpleError, SimpleString, Value};
 use tokio::sync::oneshot;
 
 use stream::Stream;
@@ -107,10 +107,73 @@ impl LpopBlockedTask {
     }
 }
 
+/// Target stream listening to.
+pub(crate) struct XreadBlockedTarget {
+    /// Key of the string.
+    key: String,
+
+    start_time_id: u64,
+
+    start_seq_id: u64,
+}
+
+impl XreadBlockedTarget {
+    pub fn new(key: String, start_time_id: u64, start_seq_id: u64) -> Self {
+        Self {
+            key,
+            start_time_id,
+            start_seq_id,
+        }
+    }
+}
+
+/// A blocked XREAD task.
+///
+/// Each instance indicates that a redis client is using XREAD to waiting
+/// for incoming data, waiting FOREVER.
+pub(crate) struct XreadBlockedTask {
+    /// Each XREAD command can listen to multiple streams, each stream is a
+    /// single `XreadBlockedTarget`.
+    ///
+    /// Once any of the `targets` are feeded with data, the listening process
+    /// shall be done.
+    targets: Vec<XreadBlockedTarget>,
+
+    /// The channel to send data back once any of the `targets` are feeded.
+    ///
+    /// Send back the target name and the corresponding value.
+    sender: oneshot::Sender<(Vec<String>, Value)>,
+}
+
+impl XreadBlockedTask {
+    pub fn new(
+        targets: Vec<XreadBlockedTarget>,
+        sender: oneshot::Sender<(Vec<String>, Value)>,
+    ) -> Self {
+        Self { targets, sender }
+    }
+
+    /// Find all streams in current task that accept the incoimg data with
+    /// `start_time_id` and `start_seq_id`.
+    ///
+    /// Return the name of all those streams.
+    fn extract_target(&mut self, key: &str, start_time_id: u64, start_seq_id: u64) -> Vec<String> {
+        self.targets
+            .extract_if(.., |task| {
+                task.key == key
+                    && task.start_time_id <= start_time_id
+                    && task.start_seq_id <= start_seq_id
+            })
+            .map(|x| x.key.clone())
+            .collect::<Vec<_>>()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Storage {
     inner: Arc<Mutex<StorageInner>>,
     lpop_blocked_task: Arc<Mutex<Vec<LpopBlockedTask>>>,
+    xread_blocked_task: Arc<Mutex<Vec<XreadBlockedTask>>>,
 }
 
 struct StorageInner {
@@ -134,6 +197,7 @@ impl Storage {
                 stream: HashMap::new(),
             })),
             lpop_blocked_task: Arc::new(Mutex::new(vec![])),
+            xread_blocked_task: Arc::new(Mutex::new(vec![])),
         }
     }
 
@@ -401,6 +465,33 @@ impl Storage {
                 (time_id, seq_id)
             }
         };
+
+        {
+            // Feed all waiting XREAD tasks.
+            // Return the value to all XREAD tasks.
+            // ref: https://redis.io/docs/latest/commands/xread/#how-multiple-clients-blocked-on-a-single-stream-are-served
+            let mut feed_lock = self.xread_blocked_task.lock().unwrap();
+            let mut removed_id = None;
+            for (idx, task) in feed_lock.iter_mut().rev().enumerate() {
+                let target_tasks = task.extract_target(&key, time_id, seq_id);
+                if target_tasks.is_empty() {
+                    continue;
+                }
+
+                removed_id = Some((idx, target_tasks));
+                break;
+            }
+
+            if let Some((idx, target_tasks)) = removed_id {
+                let task = feed_lock.remove(idx);
+                let values_with_id = Value::Array(Array::with_values(vec![
+                    Value::SimpleString(SimpleString::new(format!("{}-{}", time_id, seq_id))),
+                    Value::Array(Array::with_values(value.clone())),
+                ]));
+                task.sender.send((target_tasks, values_with_id)).unwrap();
+            }
+        }
+
         match lock.stream.get_mut(key.as_str()) {
             Some(s) => s.add_entry(time_id, seq_id, value),
             None => {
@@ -418,5 +509,10 @@ impl Storage {
             Some(s) => s.get_range(start, end),
             None => Err(OpError::KeyAbsent),
         }
+    }
+
+    pub fn xread_add_block_task(&mut self, task: XreadBlockedTask) {
+        let mut lock = self.xread_blocked_task.lock().unwrap();
+        lock.push(task);
     }
 }
