@@ -68,7 +68,7 @@ impl Stream {
         time_id: u64,
         seq_id: u64,
         values: Vec<Value>,
-    ) -> OpResult<StreamId> {
+    ) -> OpResult<(StreamId, bool)> {
         if time_id == 0 && seq_id == 0 {
             return Err(OpError::InvalidStreamId);
         }
@@ -85,8 +85,9 @@ impl Stream {
 
                 self.last_entry_time_id = time_id;
                 entry.last_entry_seq_id = seq_id;
+                let new_entry = !entry.data.contains_key(&seq_id);
                 entry.data.insert(seq_id, values);
-                Ok(StreamId::new(time_id, seq_id))
+                Ok((StreamId::new(time_id, seq_id), new_entry))
             }
             None => {
                 // Insert new entry.
@@ -95,7 +96,7 @@ impl Stream {
                     StreamEntry::new(seq_id, BTreeMap::from([(seq_id, values)])),
                 );
                 self.last_entry_time_id = time_id;
-                Ok(StreamId::new(time_id, seq_id))
+                Ok((StreamId::new(time_id, seq_id), true))
             }
         }
     }

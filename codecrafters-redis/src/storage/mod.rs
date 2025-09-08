@@ -108,6 +108,7 @@ impl LpopBlockedTask {
 }
 
 /// Target stream listening to.
+#[derive(Debug)]
 pub(crate) struct XreadBlockedTarget {
     /// Key of the string.
     key: String,
@@ -115,14 +116,28 @@ pub(crate) struct XreadBlockedTarget {
     start_time_id: u64,
 
     start_seq_id: u64,
+
+    only_new_entry: bool,
 }
 
 impl XreadBlockedTarget {
-    pub fn new(key: String, start_time_id: u64, start_seq_id: u64) -> Self {
+    /// Build a target that specified with entry id.
+    pub fn with_id(key: String, start_time_id: u64, start_seq_id: u64) -> Self {
         Self {
             key,
             start_time_id,
             start_seq_id,
+            only_new_entry: false,
+        }
+    }
+
+    /// Build a target that only excepting new entries.
+    pub fn with_new_entry(key: String) -> Self {
+        Self {
+            key,
+            start_time_id: 0,
+            start_seq_id: 0,
+            only_new_entry: true,
         }
     }
 }
@@ -153,17 +168,33 @@ impl XreadBlockedTask {
         Self { targets, sender }
     }
 
-    /// Find all streams in current task that accept the incoimg data with
+    /// Find all streams in current task that accept the incoming data with
     /// `start_time_id` and `start_seq_id`.
     ///
     /// Return the name of all those streams.
-    fn extract_target(&mut self, key: &str, start_time_id: u64, start_seq_id: u64) -> Vec<String> {
+    fn extract_target_waiting_for_id(
+        &mut self,
+        key: &str,
+        start_time_id: u64,
+        start_seq_id: u64,
+    ) -> Vec<String> {
         self.targets
             .extract_if(.., |task| {
-                task.key == key
+                !task.only_new_entry
+                    && task.key == key
                     && task.start_time_id <= start_time_id
                     && task.start_seq_id <= start_seq_id
             })
+            .map(|x| x.key.clone())
+            .collect::<Vec<_>>()
+    }
+
+    /// Find all streams in current task that only accept data saved in new entry.
+    ///
+    /// Return the name of all those streams.
+    fn extract_target_waiting_for_new_entry(&mut self, key: &str) -> Vec<String> {
+        self.targets
+            .extract_if(.., |task| task.only_new_entry && task.key == key)
             .map(|x| x.key.clone())
             .collect::<Vec<_>>()
     }
@@ -466,14 +497,31 @@ impl Storage {
             }
         };
 
-        {
+        let ret = match lock.stream.get_mut(key.as_str()) {
+            Some(s) => s.add_entry(time_id, seq_id, value.clone()),
+            None => {
+                let mut s = Stream::new();
+                let ret = s.add_entry(time_id, seq_id, value.clone());
+                lock.stream.insert(key.clone(), s);
+                ret
+            }
+        };
+
+        if let Ok((ret, saved_in_new_entry)) = ret {
             // Feed all waiting XREAD tasks.
             // Return the value to all XREAD tasks.
             // ref: https://redis.io/docs/latest/commands/xread/#how-multiple-clients-blocked-on-a-single-stream-are-served
             let mut feed_lock = self.xread_blocked_task.lock().unwrap();
             let mut removed_id = None;
             for (idx, task) in feed_lock.iter_mut().rev().enumerate() {
-                let target_tasks = task.extract_target(&key, time_id, seq_id);
+                let mut target_tasks = task.extract_target_waiting_for_id(&key, time_id, seq_id);
+                if saved_in_new_entry {
+                    println!(
+                        "[storage] stream: checking data in new entry for key {} in task {:?}",
+                        key, task.targets
+                    );
+                    target_tasks.append(&mut task.extract_target_waiting_for_new_entry(&key));
+                }
                 if target_tasks.is_empty() {
                     continue;
                 }
@@ -490,16 +538,9 @@ impl Storage {
                 ]));
                 task.sender.send((target_tasks, values_with_id)).unwrap();
             }
-        }
-
-        match lock.stream.get_mut(key.as_str()) {
-            Some(s) => s.add_entry(time_id, seq_id, value),
-            None => {
-                let mut s = Stream::new();
-                let ret = s.add_entry(time_id, seq_id, value);
-                lock.stream.insert(key, s);
-                ret
-            }
+            Ok(ret)
+        } else {
+            Err(ret.unwrap_err())
         }
     }
 

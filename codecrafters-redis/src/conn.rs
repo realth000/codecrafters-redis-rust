@@ -1,3 +1,5 @@
+use std::io::{stdout, Write};
+
 use serde::Serialize;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
@@ -16,7 +18,8 @@ impl<'a> Conn<'a> {
     }
 
     pub(crate) fn log(&self, data: impl AsRef<str>) {
-        println!("[{}] {}", self.id, data.as_ref())
+        println!("[{}] {}", self.id, data.as_ref());
+        stdout().flush().unwrap();
     }
 
     pub(crate) async fn write_value<T: Serialize>(&mut self, value: &T) -> ServerResult<()> {

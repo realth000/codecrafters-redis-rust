@@ -74,6 +74,9 @@ pub(super) async fn handle_xread_command(
                 args: args.clone(),
             })?;
             stream_ids.push(id);
+        } else if s == "$" {
+            // Use auto to represent only waiting for new entries for BLOCKING xread commands.
+            stream_ids.push(StreamId::Auto);
         } else {
             stream_names.push(s);
         }
@@ -95,25 +98,39 @@ pub(super) async fn handle_xread_command(
     let mut query_result = vec![];
 
     match block_duration {
-        Some(0) => {
-            // Block till notify.
+        Some(v) => {
+            // Block forever till notify.
             let block_targets = queries
                 .iter()
-                .map(|q| {
-                    let (time_id, seq_id) = match q.1 {
-                        StreamId::Value { time_id, seq_id } => (time_id, seq_id),
-                        StreamId::Auto | StreamId::PartialAuto(_) => {
-                            unreachable!("Auto id shall not happen here")
-                        }
-                    };
-                    XreadBlockedTarget::new(q.0.to_owned(), time_id, seq_id)
+                .map(|q| match q.1 {
+                    StreamId::Value { time_id, seq_id } => {
+                        XreadBlockedTarget::with_id(q.0.to_owned(), time_id, seq_id)
+                    }
+                    StreamId::Auto => XreadBlockedTarget::with_new_entry(q.0.to_owned()),
+                    StreamId::PartialAuto(_) => {
+                        unreachable!("partial auto id shall not happen here")
+                    }
                 })
                 .collect::<Vec<_>>();
             let (sender, recver) = oneshot::channel::<(Vec<String>, Value)>();
             let block_task = XreadBlockedTask::new(block_targets, sender);
             storage.xread_add_block_task(block_task);
-            match recver.await {
-                Ok((keys, value)) => {
+
+            let r = if v > 0 {
+                // Wait for some time.
+                match tokio::time::timeout(Duration::from_millis(v), async { recver.await }).await {
+                    Ok(v) => Some(v),
+                    Err(..) => {
+                        // Timeout
+                        None
+                    }
+                }
+            } else {
+                Some(recver.await)
+            };
+
+            match r {
+                Some(Ok((keys, value))) => {
                     conn.log(format!(
                         "XREAD [block forever] received value for keys: {keys:?} = {value:?}"
                     ));
@@ -125,21 +142,18 @@ pub(super) async fn handle_xread_command(
                         query_result.push(arr);
                     }
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     conn.log(format!(
                         "failed to receive the result for forever blocking task: {e:?}"
                     ));
                     return Ok(());
                 }
+                None => {
+                    // No value received.
+                }
             }
         }
         _ => {
-            // Wait for some time, or do not wait.
-            if let Some(v) = block_duration {
-                // Wait for some time.
-                tokio::time::sleep(Duration::from_millis(v)).await;
-            }
-
             for query in queries {
                 conn.log(format!("XREAD key={}, {:?}..={:?}", query.0, query.1, end));
                 let v = storage
