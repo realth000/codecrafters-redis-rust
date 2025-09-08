@@ -3,10 +3,10 @@ use serde_redis::{Array, Value};
 use crate::{
     command::{
         blpop::handle_blpop_command, echo::handle_echo_command, get::handle_get_command,
-        llen::handle_llen_command, lpop::handle_lpop_command, lpush::handle_lpush_command,
-        lrange::handle_lrange_command, ping::handle_ping_command, rpush::handle_rpush_command,
-        set::handle_set_command, tipe::handle_type_command, xadd::handle_xadd_command,
-        xrange::handle_xrange_command, xread::handle_xread_command,
+        incr::handle_incr_command, llen::handle_llen_command, lpop::handle_lpop_command,
+        lpush::handle_lpush_command, lrange::handle_lrange_command, ping::handle_ping_command,
+        rpush::handle_rpush_command, set::handle_set_command, tipe::handle_type_command,
+        xadd::handle_xadd_command, xrange::handle_xrange_command, xread::handle_xread_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -16,6 +16,7 @@ use crate::{
 mod blpop;
 mod echo;
 mod get;
+mod incr;
 mod llen;
 mod lpop;
 mod lpush;
@@ -60,6 +61,7 @@ pub(crate) async fn dispatch_command(
                     "XADD" => handle_xadd_command(conn, args, storage).await,
                     "XRANGE" => handle_xrange_command(conn, args, storage).await,
                     "XREAD" => handle_xread_command(conn, args, storage).await,
+                    "INCR" => handle_incr_command(conn, args, storage).await,
                     v => Err(ServerError::InvalidCommand(v.to_string())),
                 }
             }

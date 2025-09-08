@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use serde_redis::{Array, SimpleError, SimpleString, Value};
+use serde_redis::{Array, Integer, SimpleError, SimpleString, Value};
 use tokio::sync::oneshot;
 
 use stream::Stream;
@@ -26,6 +26,11 @@ pub(crate) enum OpError {
 
     /// Stream id should be greater than "0-0".
     InvalidStreamId,
+
+    /// Not a valid integer in storage, or the value is out of range.
+    ///
+    /// Similar to `TypeMismatch` but more specific to integer related process.
+    InvalidInteger,
 }
 
 impl OpError {
@@ -46,6 +51,9 @@ impl OpError {
                 "ERR",
                 "The ID specified in XADD is equal or smaller than the target stream top item",
             ),
+            OpError::InvalidInteger => {
+                SimpleError::with_prefix("ERR", "value is not an integer or out of range")
+            }
         };
 
         Value::SimpleError(e)
@@ -60,6 +68,17 @@ impl OpError {
 enum LiveValue {
     /// Value exists and is alive.
     Live(Value),
+
+    /// Value exists but is expired.
+    Expired,
+
+    /// No value available.
+    Absent,
+}
+
+enum LiveValueRef<'a> {
+    /// Value exists and is alive.
+    Live(&'a mut Value),
 
     /// Value exists but is expired.
     Expired,
@@ -89,6 +108,20 @@ impl ValueCell {
                 }
             }
             None => LiveValue::Live(self.value.clone()),
+        }
+    }
+
+    fn live_value_mut(&mut self) -> LiveValueRef {
+        match self.expiration {
+            Some(d) => {
+                if d > SystemTime::now() {
+                    LiveValueRef::Live(&mut self.value)
+                } else {
+                    // Expired.
+                    LiveValueRef::Expired
+                }
+            }
+            None => LiveValueRef::Live(&mut self.value),
         }
     }
 }
@@ -555,5 +588,35 @@ impl Storage {
     pub fn xread_add_block_task(&mut self, task: XreadBlockedTask) {
         let mut lock = self.xread_blocked_task.lock().unwrap();
         lock.push(task);
+    }
+
+    pub fn integer_increase(&mut self, key: String) -> OpResult<Value> {
+        let mut lock = self.inner.lock().unwrap();
+        match lock
+            .data
+            .get_mut(key.as_str())
+            .map(|cell| cell.live_value_mut())
+        {
+            Some(LiveValueRef::Live(value)) => match value {
+                Value::Integer(integer) => {
+                    integer.increase(1);
+                    Ok(Value::Integer(integer.to_owned()))
+                }
+                _ => Err(OpError::InvalidInteger),
+            },
+            Some(LiveValueRef::Expired) | Some(LiveValueRef::Absent) | None => {
+                let value = Value::Integer(Integer::new(1));
+                // Insert new value.
+                lock.data.insert(
+                    key,
+                    ValueCell {
+                        value: value.clone(),
+                        expiration: None,
+                    },
+                );
+
+                Ok(value)
+            }
+        }
     }
 }

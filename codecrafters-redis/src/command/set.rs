@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use serde_redis::{Array, SimpleString};
+use serde_redis::{Array, Integer, SimpleString, Value};
 use tokio::io::AsyncWriteExt;
 
 use crate::{
@@ -21,7 +21,22 @@ pub(super) async fn handle_set_command(
             cmd: "SET",
             args: args.clone(),
         })?;
-    let value = args.pop_front().unwrap();
+    let value = match args.pop_front().unwrap() {
+        Value::SimpleString(s) => match s.value().parse::<i64>() {
+            Ok(v) => Value::Integer(Integer::new(v)),
+            _ => Value::SimpleString(s),
+        },
+        Value::BulkString(b) => match b
+            .clone()
+            .take()
+            .and_then(|x| String::from_utf8(x).ok())
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            Some(v) => Value::Integer(Integer::new(v)),
+            _ => Value::BulkString(b),
+        },
+        v => v,
+    };
     conn.log(format!("SET {key:?}={value:?}"));
 
     // Duration till expire. None value means never expire.

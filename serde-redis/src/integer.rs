@@ -16,6 +16,12 @@ impl Integer {
     pub fn value(&self) -> i64 {
         self.0
     }
+
+    /// Increase the value by `v` and return the value after add `v`.
+    pub fn increase(&mut self, v: i64) -> i64 {
+        self.0 += v;
+        self.0
+    }
 }
 
 pub(crate) struct IntegerVisitor;
