@@ -5,7 +5,7 @@ use std::{
 };
 
 use serde_redis::{Array, SimpleError, Value};
-use tokio::sync::{oneshot, Notify};
+use tokio::sync::oneshot;
 
 use stream::Stream;
 
@@ -93,33 +93,17 @@ impl ValueCell {
     }
 }
 
-pub(crate) struct LpopBlockedHandle {
-    pub notify: Arc<Notify>,
-}
-
 pub(crate) struct LpopBlockedTask {
     key: String,
-    handle: Arc<LpopBlockedHandle>,
     sender: oneshot::Sender<Value>,
 }
 
 impl LpopBlockedTask {
     pub fn new(key: String) -> (Self, oneshot::Receiver<Value>) {
         let (sender, recver) = oneshot::channel::<Value>();
-        let handle = Arc::new(LpopBlockedHandle {
-            notify: Arc::new(Notify::new()),
-        });
 
-        let s = Self {
-            key,
-            handle,
-            sender,
-        };
+        let s = Self { key, sender };
         (s, recver)
-    }
-
-    pub fn clone_handle(&self) -> Arc<LpopBlockedHandle> {
-        self.handle.clone()
     }
 }
 
@@ -220,7 +204,6 @@ impl Storage {
                     let v = value.pop_front().unwrap(); // Not empty for sure.
                     let task_to_feed = lpop_lock.remove(pos);
                     task_to_feed.sender.send(v).unwrap();
-                    task_to_feed.handle.notify.notify_one();
                     interupted_count += 1;
                 }
                 None => {

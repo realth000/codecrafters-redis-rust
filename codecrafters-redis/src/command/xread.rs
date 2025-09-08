@@ -44,6 +44,8 @@ pub(super) async fn handle_xread_command(
             })?;
         tokio::time::sleep(Duration::from_millis(block_duration)).await;
 
+        // TODO: Wait till receive content.
+
         // Read the "streams" argument after "XREAD".
         let _stream = args
             .pop_front_bulk_string()

@@ -60,23 +60,17 @@ pub(super) async fn handle_blpop_command(
         Ok(None) | Err(OpError::KeyAbsent) => {
             // No value in list, block here.
             let (task, recver) = LpopBlockedTask::new(key.clone());
-            let handle = task.clone_handle();
             storage.lpop_add_block_task(task);
 
-            let notify = handle.notify.clone();
             conn.log(format!(
                 "BLPOP: value not present, blocking connection for {block_duration:?}"
             ));
             let wait_result = match block_duration {
                 Some(d) => {
                     // Wait for some time.
-                    match tokio::time::timeout(d, async {
-                        notify.notified().await;
-                    })
-                    .await
-                    {
-                        Ok(_) => recver.await.ok(),
-                        Err(_) =>
+                    match tokio::time::timeout(d, async { recver.await }).await {
+                        Ok(Ok(v)) => Some(v),
+                        Ok(Err(..)) | Err(_) =>
                         /* Timeout */
                         {
                             None
@@ -85,7 +79,6 @@ pub(super) async fn handle_blpop_command(
                 }
                 None => {
                     // Wait forever.
-                    notify.notified().await;
                     recver.await.map(Some).unwrap()
                 }
             };
