@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    net::Ipv4Addr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -250,7 +251,7 @@ impl StorageInner {
 }
 
 impl Storage {
-    pub fn new() -> Self {
+    pub fn new(master: Option<(Ipv4Addr, u16)>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(StorageInner {
                 data: HashMap::new(),
@@ -258,7 +259,7 @@ impl Storage {
             })),
             lpop_blocked_task: Arc::new(Mutex::new(vec![])),
             xread_blocked_task: Arc::new(Mutex::new(vec![])),
-            replication: Arc::new(Mutex::new(ReplicationState::new())),
+            replication: Arc::new(Mutex::new(ReplicationState::new(master))),
         }
     }
 

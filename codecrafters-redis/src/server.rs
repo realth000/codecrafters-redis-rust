@@ -13,11 +13,11 @@ pub struct RedisServer {
 }
 
 impl RedisServer {
-    pub fn new(ip: Ipv4Addr, port: u16) -> Self {
+    pub fn new(ip: Ipv4Addr, port: u16, master: Option<(Ipv4Addr, u16)>) -> Self {
         Self {
             ip,
             port,
-            storage: Storage::new(),
+            storage: Storage::new(master),
         }
     }
 
