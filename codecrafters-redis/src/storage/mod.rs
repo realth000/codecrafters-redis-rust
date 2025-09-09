@@ -107,7 +107,7 @@ impl ValueCell {
         }
     }
 
-    fn live_value_mut(&mut self) -> LiveValueRef {
+    fn live_value_mut(&mut self) -> LiveValueRef<'_> {
         match self.expiration {
             Some(d) => {
                 if d > SystemTime::now() {
