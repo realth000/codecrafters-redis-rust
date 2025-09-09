@@ -129,7 +129,6 @@ impl ReplicationState {
             Value::BulkString(BulkString::new("capa")),
             Value::BulkString(BulkString::new("psync2")),
         ]));
-
         let n = conn
             .write(serde_redis::to_vec(&replconf).unwrap().as_slice())
             .await
@@ -152,6 +151,47 @@ impl ReplicationState {
                 )))
             }
         }
+
+        // Send PSYNC
+
+        let psync = Value::Array(Array::with_values(vec![
+            Value::BulkString(BulkString::new("PSYNC")),
+            Value::BulkString(BulkString::new("?")),
+            Value::BulkString(BulkString::new("-1")),
+        ]));
+        let n = conn
+            .write(serde_redis::to_vec(&psync).unwrap().as_slice())
+            .await
+            .context("failed to send psync")
+            .map_err(ServerError::Custom)?;
+        println!("[replica] psync: sent {n} bytes");
+        let n = conn
+            .read(&mut buf)
+            .await
+            .context("failed to read psync reply")
+            .map_err(ServerError::Custom)?;
+        let master_id = match serde_redis::from_bytes(&buf[0..n])
+            .context("failed to read psync response:")
+            .map_err(ServerError::Custom)?
+        {
+            Value::SimpleString(s) => {
+                let segs = s.value().split(' ').collect::<Vec<_>>();
+                if segs.len() == 3 && segs[0] == "FULLSYNC" && segs[2] == "0" {
+                    segs[1].to_string()
+                } else {
+                    return Err(ServerError::Custom(anyhow!(
+                        "invalid psync response: {s:?}"
+                    )));
+                }
+            }
+            v => {
+                return Err(ServerError::Custom(anyhow!(
+                    "[replica] invalid REPLCONF capa response: {v:?}"
+                )))
+            }
+        };
+
+        println!("[replica] handshake success, master id is {master_id}");
 
         Ok(())
     }
