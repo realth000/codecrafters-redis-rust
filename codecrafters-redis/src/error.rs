@@ -22,8 +22,14 @@ pub enum ServerError {
     /// Error when serializing or deserializing.
     SerdeError(RdError),
 
+    /// Replica configuration not set.
+    ReplicaConfigNotSet,
+
     /// Invalid args for command.
     InvalidArgs { cmd: &'static str, args: Array },
+
+    /// Custom anyhow error.
+    Custom(anyhow::Error),
 }
 
 impl Display for ServerError {
@@ -40,6 +46,8 @@ impl Display for ServerError {
             ServerError::InvalidArgs { cmd, args } => {
                 f.write_fmt(format_args!("invalid args {args:?} for command {cmd}"))
             }
+            ServerError::ReplicaConfigNotSet => f.write_str("replica master config not set"),
+            ServerError::Custom(error) => f.write_fmt(format_args!("{error}")),
         }
     }
 }

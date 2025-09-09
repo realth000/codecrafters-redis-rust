@@ -14,7 +14,7 @@ mod stream;
 
 pub use stream::StreamId;
 
-use crate::replication::ReplicationState;
+use crate::{error::ServerResult, replication::ReplicationState};
 
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
@@ -621,5 +621,10 @@ impl Storage {
     pub(crate) fn info(&self) -> Value {
         let lock = self.replication.lock().unwrap();
         lock.info()
+    }
+
+    pub(crate) async fn replica_handshake(&self) -> ServerResult<()> {
+        let lock = self.replication.lock().unwrap();
+        lock.handshake().await
     }
 }

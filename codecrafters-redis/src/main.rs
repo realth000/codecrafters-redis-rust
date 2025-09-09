@@ -40,6 +40,9 @@ async fn main() -> Result<()> {
     }
 
     let server = RedisServer::new(Ipv4Addr::new(127, 0, 0, 1), port, master);
+    if let Err(e) = server.replica_handshake().await {
+        println!("[main][replica]: {e}");
+    }
     server.serve().await.context("when running server")?;
     Ok(())
 }

@@ -4,7 +4,12 @@ use anyhow::{Context, Result};
 use serde_redis::Array;
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::{command::dispatch_command, conn::Conn, error::ServerError, storage::Storage};
+use crate::{
+    command::dispatch_command,
+    conn::Conn,
+    error::{ServerError, ServerResult},
+    storage::Storage,
+};
 
 pub struct RedisServer {
     ip: Ipv4Addr,
@@ -68,5 +73,9 @@ impl RedisServer {
             conn.log("responded to client");
         }
         Ok(())
+    }
+
+    pub(crate) async fn replica_handshake(&self) -> ServerResult<()> {
+        self.storage.replica_handshake().await
     }
 }
