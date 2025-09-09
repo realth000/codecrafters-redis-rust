@@ -4,10 +4,11 @@ use crate::{
     command::{
         blpop::handle_blpop_command, discard::handle_discard_command, echo::handle_echo_command,
         exec::handle_exec_command, get::handle_get_command, incr::handle_incr_command,
-        llen::handle_llen_command, lpop::handle_lpop_command, lpush::handle_lpush_command,
-        lrange::handle_lrange_command, multi::handle_multi_command, ping::handle_ping_command,
-        rpush::handle_rpush_command, set::handle_set_command, tipe::handle_type_command,
-        xadd::handle_xadd_command, xrange::handle_xrange_command, xread::handle_xread_command,
+        info::handle_info_command, llen::handle_llen_command, lpop::handle_lpop_command,
+        lpush::handle_lpush_command, lrange::handle_lrange_command, multi::handle_multi_command,
+        ping::handle_ping_command, rpush::handle_rpush_command, set::handle_set_command,
+        tipe::handle_type_command, xadd::handle_xadd_command, xrange::handle_xrange_command,
+        xread::handle_xread_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -20,6 +21,7 @@ mod echo;
 mod exec;
 mod get;
 mod incr;
+mod info;
 mod llen;
 mod lpop;
 mod lpush;
@@ -143,6 +145,7 @@ pub(crate) async fn dispatch_normal_command(
         "XRANGE" => handle_xrange_command(conn, args, storage).await,
         "XREAD" => handle_xread_command(conn, args, storage).await,
         "INCR" => handle_incr_command(conn, args, storage).await,
+        "INFO" => handle_info_command(conn, storage).await,
         v => Err(ServerError::InvalidCommand(v.to_string())),
     }
 }

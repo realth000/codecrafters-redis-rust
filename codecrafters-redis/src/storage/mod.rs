@@ -12,6 +12,9 @@ use stream::Stream;
 mod stream;
 
 pub use stream::StreamId;
+
+use crate::replication::ReplicationState;
+
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
 pub(crate) enum OpError {
@@ -230,6 +233,7 @@ pub(crate) struct Storage {
     inner: Arc<Mutex<StorageInner>>,
     lpop_blocked_task: Arc<Mutex<Vec<LpopBlockedTask>>>,
     xread_blocked_task: Arc<Mutex<Vec<XreadBlockedTask>>>,
+    replication: Arc<Mutex<ReplicationState>>,
 }
 
 struct StorageInner {
@@ -254,6 +258,7 @@ impl Storage {
             })),
             lpop_blocked_task: Arc::new(Mutex::new(vec![])),
             xread_blocked_task: Arc::new(Mutex::new(vec![])),
+            replication: Arc::new(Mutex::new(ReplicationState::new())),
         }
     }
 
@@ -610,5 +615,10 @@ impl Storage {
                 Ok(value)
             }
         }
+    }
+
+    pub(crate) fn info(&self) -> Value {
+        let lock = self.replication.lock().unwrap();
+        lock.info()
     }
 }

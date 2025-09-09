@@ -7,6 +7,7 @@ use crate::server::RedisServer;
 mod command;
 mod conn;
 mod error;
+mod replication;
 mod server;
 mod storage;
 mod transaction;
