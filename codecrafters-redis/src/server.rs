@@ -76,6 +76,6 @@ impl RedisServer {
     }
 
     pub(crate) async fn replica_handshake(&self) -> ServerResult<()> {
-        self.storage.replica_handshake().await
+        self.storage.replica_handshake(self.port).await
     }
 }

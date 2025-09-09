@@ -1,8 +1,11 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
-use anyhow::Context;
-use serde_redis::{to_vec, Array, BulkString, Value};
-use tokio::{io::AsyncWriteExt, net::TcpSocket};
+use anyhow::{anyhow, Context};
+use serde_redis::{Array, BulkString, Value};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpSocket,
+};
 
 use crate::error::{ServerError, ServerResult};
 
@@ -42,7 +45,7 @@ impl ReplicationState {
         Value::BulkString(BulkString::new(buf))
     }
 
-    pub(crate) async fn handshake(&self) -> ServerResult<()> {
+    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<()> {
         let master_addr = match self.master {
             Some(v) => v,
             None => return Err(ServerError::ReplicaConfigNotSet),
@@ -59,16 +62,97 @@ impl ReplicationState {
             .context("[replica] failed to connect to master")
             .map_err(ServerError::Custom)?;
 
+        let mut buf = [0u8; 1024];
+
+        // Send PING
+
         let ping = Value::Array(Array::with_values(vec![Value::BulkString(
             BulkString::new("PING"),
         )]));
-
         let n = conn
-            .write(to_vec(&ping).unwrap().as_slice())
+            .write(serde_redis::to_vec(&ping).unwrap().as_slice())
             .await
             .context("[replica] failed to send PING message")
             .map_err(ServerError::Custom)?;
         println!("[replica] PING: sent {n} bytes");
+        let n = conn
+            .read(&mut buf)
+            .await
+            .context("failed to read PING reply")
+            .map_err(ServerError::Custom)?;
+        match serde_redis::from_bytes(&buf[0..n])
+            .context("failed to read PING response:")
+            .map_err(ServerError::Custom)?
+        {
+            Value::SimpleString(s) if s.value() == "PONG" => { /* Correct response */ }
+            v => {
+                return Err(ServerError::Custom(anyhow!(
+                    "[replica] invalid PING response: {v:?}"
+                )))
+            }
+        }
+
+        // Send REPLCONF listening-port
+
+        let replconf = Value::Array(Array::with_values(vec![
+            Value::BulkString(BulkString::new("REPLCONF")),
+            Value::BulkString(BulkString::new("listening-port")),
+            Value::BulkString(BulkString::new(port.to_string())),
+        ]));
+        let n = conn
+            .write(serde_redis::to_vec(&replconf).unwrap().as_slice())
+            .await
+            .context("failed to send REPLCONF listening-port")
+            .map_err(ServerError::Custom)?;
+        println!("[replica] REPLCONF listening-port: sent {n} bytes");
+        let n = conn
+            .read(&mut buf)
+            .await
+            .context("failed to read REPLCONF listening-port reply")
+            .map_err(ServerError::Custom)?;
+        match serde_redis::from_bytes(&buf[0..n])
+            .context("failed to read REPLCONF listening-port response:")
+            .map_err(ServerError::Custom)?
+        {
+            Value::SimpleString(s) if s.value() == "OK" => { /* Correct response */ }
+            v => {
+                return Err(ServerError::Custom(anyhow!(
+                    "[replica] invalid REPLCONF listening-port response: {v:?}"
+                )))
+            }
+        }
+
+        // Send REPLCONF listening-port
+
+        let replconf = Value::Array(Array::with_values(vec![
+            Value::BulkString(BulkString::new("REPLCONF")),
+            Value::BulkString(BulkString::new("capa")),
+            Value::BulkString(BulkString::new("psync2")),
+        ]));
+
+        let n = conn
+            .write(serde_redis::to_vec(&replconf).unwrap().as_slice())
+            .await
+            .context("failed to send REPLCONF capa")
+            .map_err(ServerError::Custom)?;
+        println!("[replica] REPLCONF capa: sent {n} bytes");
+        let n = conn
+            .read(&mut buf)
+            .await
+            .context("failed to read REPLCONF capa reply")
+            .map_err(ServerError::Custom)?;
+        match serde_redis::from_bytes(&buf[0..n])
+            .context("failed to read REPLCONF capa response:")
+            .map_err(ServerError::Custom)?
+        {
+            Value::SimpleString(s) if s.value() == "OK" => { /* Correct response */ }
+            v => {
+                return Err(ServerError::Custom(anyhow!(
+                    "[replica] invalid REPLCONF capa response: {v:?}"
+                )))
+            }
+        }
+
         Ok(())
     }
 }

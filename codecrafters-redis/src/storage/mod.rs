@@ -623,8 +623,8 @@ impl Storage {
         lock.info()
     }
 
-    pub(crate) async fn replica_handshake(&self) -> ServerResult<()> {
+    pub(crate) async fn replica_handshake(&self, port: u16) -> ServerResult<()> {
         let lock = self.replication.lock().unwrap();
-        lock.handshake().await
+        lock.handshake(port).await
     }
 }
