@@ -104,4 +104,8 @@ impl Transaction {
             }
         }
     }
+
+    pub fn abort(&mut self) {
+        *self = Transaction::None
+    }
 }

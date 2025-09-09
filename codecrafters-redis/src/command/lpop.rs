@@ -36,7 +36,7 @@ pub(super) async fn handle_lpop_command(
         count = None;
     }
 
-    let content = match storage.array_pop_front(key, count) {
+    let value = match storage.array_pop_front(key, count) {
         Ok(Some(v)) => v,
         Ok(None) => Value::BulkString(BulkString::null()),
         Err(e) => match e {
@@ -45,5 +45,5 @@ pub(super) async fn handle_lpop_command(
         },
     };
 
-    conn.write_value(content).await
+    conn.write_value(value).await
 }

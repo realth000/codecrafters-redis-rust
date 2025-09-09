@@ -100,4 +100,9 @@ impl<'a> Conn<'a> {
         }
         Ok(self.transaction.finish())
     }
+
+    /// Abort a transaction, drop all recorded values.
+    pub(crate) fn abort_transaction(&mut self) {
+        self.transaction.abort();
+    }
 }
