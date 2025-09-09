@@ -68,7 +68,7 @@ pub(crate) async fn dispatch_command(
                         }
                         _ => {
                             conn.add_to_transaction(cmd, args);
-                            let value = Value::SimpleString(SimpleString::new("OK"));
+                            let value = Value::SimpleString(SimpleString::new("QUEUED"));
                             conn.write_value(value).await?;
                             Ok(())
                         }
