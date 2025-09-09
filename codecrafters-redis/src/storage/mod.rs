@@ -82,9 +82,6 @@ enum LiveValueRef<'a> {
 
     /// Value exists but is expired.
     Expired,
-
-    /// No value available.
-    Absent,
 }
 
 #[derive(Debug, Clone)]
@@ -604,7 +601,7 @@ impl Storage {
                 }
                 _ => Err(OpError::InvalidInteger),
             },
-            Some(LiveValueRef::Expired) | Some(LiveValueRef::Absent) | None => {
+            Some(LiveValueRef::Expired) | None => {
                 let value = Value::Integer(Integer::new(1));
                 // Insert new value.
                 lock.data.insert(

@@ -20,9 +20,13 @@ pub(super) async fn handle_get_command(
             args: args.clone(),
         })?;
 
-    let value = storage
-        .get(&key)
-        .unwrap_or_else(|| Value::BulkString(BulkString::null()));
+    let value = match storage.get(&key) {
+        Some(value) => match value {
+            Value::Integer(i) => Value::BulkString(BulkString::new(i.value().to_string())),
+            _ => value,
+        },
+        None => Value::BulkString(BulkString::null()),
+    };
     conn.log(format!("GET {key:?}={value:?}"));
     let content = serde_redis::to_vec(&value).map_err(ServerError::SerdeError)?;
     conn.stream
