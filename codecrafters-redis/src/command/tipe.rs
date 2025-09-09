@@ -24,5 +24,5 @@ pub(super) async fn handle_type_command(
     let name = storage.get_value_type(key).unwrap_or("none");
     let value = Value::SimpleString(SimpleString::new(name));
 
-    conn.write_value(&value).await
+    conn.write_value(value).await
 }

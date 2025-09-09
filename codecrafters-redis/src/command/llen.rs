@@ -21,7 +21,7 @@ pub(super) async fn handle_llen_command(
             args: args.clone(),
         })?;
 
-    let content = match storage.array_get_length(key) {
+    let value = match storage.array_get_length(key) {
         Ok(v) => Value::Integer(Integer::new(v as i64)),
         Err(e) => match e {
             OpError::KeyAbsent => Value::Integer(Integer::new(0)),
@@ -29,5 +29,5 @@ pub(super) async fn handle_llen_command(
         },
     };
 
-    conn.write_value(&content).await
+    conn.write_value(value).await
 }

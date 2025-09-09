@@ -69,6 +69,5 @@ pub(super) async fn handle_xrange_command(
         .map_err(|x| x.to_message())
         .unwrap();
 
-    conn.write_value(&value).await?;
-    Ok(())
+    conn.write_value(value).await
 }

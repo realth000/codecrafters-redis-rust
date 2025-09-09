@@ -24,5 +24,5 @@ pub(super) async fn handle_incr_command(
         Err(e) => e.to_message(),
     };
 
-    conn.write_value(&value).await
+    conn.write_value(value).await
 }

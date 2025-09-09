@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use serde_redis::{Array, Integer, SimpleString, Value};
-use tokio::io::AsyncWriteExt;
 
 use crate::{
     conn::Conn,
@@ -65,11 +64,6 @@ pub(super) async fn handle_set_command(
     }
 
     storage.insert(key, value, duration);
-    let msg2 = SimpleString::new("OK");
-    let content = serde_redis::to_vec(&msg2).map_err(ServerError::SerdeError)?;
-    conn.stream
-        .write(&content)
-        .await
-        .map_err(ServerError::IoError)?;
-    Ok(())
+    let value = Value::SimpleString(SimpleString::new("OK"));
+    conn.write_value(value).await
 }

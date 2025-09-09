@@ -9,6 +9,7 @@ mod conn;
 mod error;
 mod server;
 mod storage;
+mod transaction;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {

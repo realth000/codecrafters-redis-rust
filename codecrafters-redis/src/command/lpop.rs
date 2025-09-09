@@ -45,5 +45,5 @@ pub(super) async fn handle_lpop_command(
         },
     };
 
-    conn.write_value(&content).await
+    conn.write_value(content).await
 }

@@ -1,5 +1,4 @@
 use serde_redis::{Array, Integer, SimpleError, SimpleString, Value};
-use tokio::io::AsyncWriteExt;
 
 use crate::{
     conn::Conn,
@@ -28,18 +27,14 @@ pub(super) async fn handle_lpush_command(
 
     conn.log(format!("RPUSH {key:?}={values:?}"));
 
-    let content = if values.is_empty() {
-        serde_redis::to_vec(&SimpleError::with_prefix("EARG", "empty list args")).unwrap()
+    let value = if values.is_empty() {
+        Value::SimpleError(SimpleError::with_prefix("EARG", "empty list args"))
     } else {
         match storage.insert_list(key, values, true, true) {
-            Ok(v) => serde_redis::to_vec(&Value::Integer(Integer::new(v as i64))).unwrap(),
-            Err(e) => e.to_message_bytes(),
+            Ok(v) => Value::Integer(Integer::new(v as i64)),
+            Err(e) => e.to_message(),
         }
     };
 
-    conn.stream
-        .write(&content)
-        .await
-        .map_err(ServerError::IoError)?;
-    Ok(())
+    conn.write_value(value).await
 }

@@ -63,5 +63,5 @@ pub(super) async fn handle_xadd_command(
         Err(e) => e.to_message(),
     };
 
-    conn.write_value(&value).await
+    conn.write_value(value).await
 }

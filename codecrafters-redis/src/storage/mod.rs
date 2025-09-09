@@ -58,11 +58,6 @@ impl OpError {
 
         Value::SimpleError(e)
     }
-    /// Build the message to return according to current error.
-    pub fn to_message_bytes(self) -> Vec<u8> {
-        let e = self.to_message();
-        serde_redis::to_vec(&e).unwrap()
-    }
 }
 
 enum LiveValue {

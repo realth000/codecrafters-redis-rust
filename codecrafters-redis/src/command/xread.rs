@@ -87,8 +87,7 @@ pub(super) async fn handle_xread_command(
             "EARGS",
             "stream name and stream keys have different count",
         ));
-        conn.write_value(&content).await?;
-        return Ok(());
+        return conn.write_value(content).await;
     }
 
     let end = StreamId::Auto;
@@ -182,5 +181,5 @@ pub(super) async fn handle_xread_command(
         Value::Array(Array::with_values(query_result))
     };
 
-    conn.write_value(&value).await
+    conn.write_value(value).await
 }

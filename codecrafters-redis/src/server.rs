@@ -2,10 +2,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use anyhow::{Context, Result};
 use serde_redis::Array;
-use tokio::{
-    io::AsyncReadExt,
-    net::{TcpListener, TcpStream},
-};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::{command::dispatch_command, conn::Conn, error::ServerError, storage::Storage};
 
@@ -57,7 +54,6 @@ impl RedisServer {
         loop {
             let mut buf = [0u8; 1024];
             let n = conn
-                .stream
                 .read(&mut buf)
                 .await
                 .with_context(|| format!("[{id}] failed to read from stream"))?;
@@ -68,7 +64,7 @@ impl RedisServer {
             conn.log("receive message");
             let message: Array =
                 serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
-            dispatch_command(storage, message, &mut conn).await?;
+            dispatch_command(&mut conn, message, storage).await?;
             conn.log("responded to client");
         }
         Ok(())

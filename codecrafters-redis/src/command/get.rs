@@ -1,5 +1,4 @@
 use serde_redis::{Array, BulkString, Value};
-use tokio::io::AsyncWriteExt;
 
 use crate::{
     conn::Conn,
@@ -28,10 +27,5 @@ pub(super) async fn handle_get_command(
         None => Value::BulkString(BulkString::null()),
     };
     conn.log(format!("GET {key:?}={value:?}"));
-    let content = serde_redis::to_vec(&value).map_err(ServerError::SerdeError)?;
-    conn.stream
-        .write(&content)
-        .await
-        .map_err(ServerError::IoError)?;
-    Ok(())
+    conn.write_value(value).await
 }

@@ -25,7 +25,7 @@ pub(super) async fn handle_blpop_command(
 
     if args.is_empty() {
         let value = Value::SimpleError(SimpleError::with_prefix("EARG", "empty list args"));
-        conn.write_value(&value).await?;
+        conn.write_value(value).await?;
         return Ok(());
     }
 
@@ -38,7 +38,7 @@ pub(super) async fn handle_blpop_command(
                     "EARG",
                     format!("faied to parse timeout duration: {e}"),
                 ));
-                conn.write_value(&value).await?;
+                conn.write_value(value).await?;
                 return Ok(());
             }
         },
@@ -94,5 +94,5 @@ pub(super) async fn handle_blpop_command(
         Err(e) => e.to_message(),
     };
 
-    conn.write_value(&content).await
+    conn.write_value(content).await
 }
