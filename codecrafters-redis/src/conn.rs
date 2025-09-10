@@ -39,6 +39,11 @@ impl<'a> Conn<'a> {
         self.stream.read(buf).await
     }
 
+    pub(crate) async fn write_bytes(&mut self, buf: &[u8]) -> ServerResult<()> {
+        self.stream.write(buf).await.map_err(ServerError::IoError)?;
+        Ok(())
+    }
+
     pub(crate) async fn write_value(&mut self, value: Value) -> ServerResult<()> {
         if self.is_executing_transaction() {
             self.transaction.record_result(value);

@@ -22,6 +22,7 @@ pub use integer::Integer;
 pub use null::Null;
 pub use simple_error::SimpleError;
 pub use simple_string::SimpleString;
+pub use utils::num_to_bytes;
 
 use crate::{
     array::ArrayVisitor, bulk_string::BulkStringVisitor, integer::IntegerVisitor,

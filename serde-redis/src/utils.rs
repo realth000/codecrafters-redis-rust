@@ -1,4 +1,4 @@
-pub(crate) fn num_to_bytes(v: i64) -> Vec<u8> {
+pub fn num_to_bytes(v: i64) -> Vec<u8> {
     v.to_string()
         .trim_matches(['-', '+'])
         .chars()
