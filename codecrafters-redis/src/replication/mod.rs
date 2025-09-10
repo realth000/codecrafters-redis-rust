@@ -4,16 +4,20 @@ use anyhow::{anyhow, Context};
 use serde_redis::{Array, BulkString, Value};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpSocket,
+    net::{TcpSocket, TcpStream},
 };
 
-use crate::error::{ServerError, ServerResult};
+use crate::{
+    conn::Conn,
+    error::{ServerError, ServerResult},
+};
 
 #[derive(Debug)]
 pub(crate) struct ReplicationState {
     master: Option<(Ipv4Addr, u16)>,
     id: &'static str,
     offset: usize,
+    replica: Option<TcpStream>,
 }
 
 impl ReplicationState {
@@ -22,6 +26,7 @@ impl ReplicationState {
             master,
             id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
             offset: 0,
+            replica: None,
         }
     }
 
@@ -198,5 +203,17 @@ impl ReplicationState {
 
     pub(crate) fn id(&self) -> String {
         self.id.into()
+    }
+
+    pub(crate) async fn sync_command(&mut self, args: Array) -> ServerResult<()> {
+        let mut conn = match &mut self.replica {
+            Some(v) => Conn::new(10000, v),
+            None => return Ok(()),
+        };
+        conn.write_value(Value::Array(args)).await
+    }
+
+    pub(crate) fn set_replica(&mut self, socket: TcpStream) {
+        self.replica = Some(socket);
     }
 }

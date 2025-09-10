@@ -37,11 +37,22 @@ mod xadd;
 mod xrange;
 mod xread;
 
+pub(crate) enum DispatchResult {
+    /// Nothing special to do.
+    None,
+
+    /// Save the connection as replica connection.
+    Replica,
+
+    /// Current command need to be synced to replica.
+    ReplicaSync,
+}
+
 pub(crate) async fn dispatch_command(
     conn: &mut Conn<'_>,
     mut args: Array,
     storage: &mut Storage,
-) -> ServerResult<()> {
+) -> ServerResult<DispatchResult> {
     if args.is_null_or_empty() {
         return Err(ServerError::InvalidMessage("args is null or empty".into()));
     }
@@ -64,19 +75,23 @@ pub(crate) async fn dispatch_command(
                                 "alreayd in transaction",
                             ));
                             conn.write_value(value).await?;
-                            Ok(())
+                            Ok(DispatchResult::None)
                         }
                         "EXEC" => {
                             // Execute all commands in transaction.
                             // This also leaves the transaction state for current connection.
-                            handle_exec_command(conn, storage).await
+                            handle_exec_command(conn, storage).await?;
+                            Ok(DispatchResult::None)
                         }
-                        "DISCARD" => handle_discard_command(conn).await,
+                        "DISCARD" => {
+                            handle_discard_command(conn).await?;
+                            Ok(DispatchResult::None)
+                        }
                         _ => {
                             conn.add_to_transaction(cmd, args);
                             let value = Value::SimpleString(SimpleString::new("QUEUED"));
                             conn.write_value(value).await?;
-                            Ok(())
+                            Ok(DispatchResult::None)
                         }
                     }
                 }
@@ -104,13 +119,20 @@ pub(crate) async fn dispatch_command(
                                     "alreayd in transaction",
                                 ));
                                 conn.write_value(value).await?;
-                                Ok(())
+                                Ok(DispatchResult::None)
                             } else {
-                                handle_multi_command(conn, storage).await
+                                handle_multi_command(conn, storage).await?;
+                                Ok(DispatchResult::None)
                             }
                         }
-                        "EXEC" => handle_exec_command(conn, storage).await,
-                        "DISCARD" => handle_discard_command(conn).await,
+                        "EXEC" => {
+                            handle_exec_command(conn, storage).await?;
+                            Ok(DispatchResult::None)
+                        }
+                        "DISCARD" => {
+                            handle_discard_command(conn).await?;
+                            Ok(DispatchResult::None)
+                        }
                         v => dispatch_normal_command(conn, v, args, storage).await,
                     }
                 }
@@ -130,26 +152,81 @@ pub(crate) async fn dispatch_normal_command(
     cmd: &str,
     args: Array,
     storage: &mut Storage,
-) -> ServerResult<()> {
+) -> ServerResult<DispatchResult> {
     match cmd {
-        "PING" => handle_ping_command(conn).await,
-        "ECHO" => handle_echo_command(conn, args).await,
-        "SET" => handle_set_command(conn, args, storage).await,
-        "GET" => handle_get_command(conn, args, storage).await,
-        "RPUSH" => handle_rpush_command(conn, args, storage).await,
-        "LRANGE" => handle_lrange_command(conn, args, storage).await,
-        "LPUSH" => handle_lpush_command(conn, args, storage).await,
-        "LLEN" => handle_llen_command(conn, args, storage).await,
-        "LPOP" => handle_lpop_command(conn, args, storage).await,
-        "BLPOP" => handle_blpop_command(conn, args, storage).await,
-        "TYPE" => handle_type_command(conn, args, storage).await,
-        "XADD" => handle_xadd_command(conn, args, storage).await,
-        "XRANGE" => handle_xrange_command(conn, args, storage).await,
-        "XREAD" => handle_xread_command(conn, args, storage).await,
-        "INCR" => handle_incr_command(conn, args, storage).await,
-        "INFO" => handle_info_command(conn, storage).await,
-        "REPLCONF" => handle_replconf_command(conn, args).await,
-        "PSYNC" => handle_psync_command(conn, args, storage).await,
+        "PING" => {
+            handle_ping_command(conn).await?;
+            Ok(DispatchResult::None)
+        }
+        "ECHO" => {
+            handle_echo_command(conn, args).await?;
+            Ok(DispatchResult::None)
+        }
+        "SET" => {
+            handle_set_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "GET" => {
+            handle_get_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "RPUSH" => {
+            handle_rpush_command(conn, args, storage).await?;
+
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "LRANGE" => {
+            handle_lrange_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "LPUSH" => {
+            handle_lpush_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "LLEN" => {
+            handle_llen_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "LPOP" => {
+            handle_lpop_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "BLPOP" => {
+            handle_blpop_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "TYPE" => {
+            handle_type_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "XADD" => {
+            handle_xadd_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "XRANGE" => {
+            handle_xrange_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "XREAD" => {
+            handle_xread_command(conn, args, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "INCR" => {
+            handle_incr_command(conn, args, storage).await?;
+            Ok(DispatchResult::ReplicaSync)
+        }
+        "INFO" => {
+            handle_info_command(conn, storage).await?;
+            Ok(DispatchResult::None)
+        }
+        "REPLCONF" => {
+            handle_replconf_command(conn, args).await?;
+            Ok(DispatchResult::None)
+        }
+        "PSYNC" => {
+            handle_psync_command(conn, args, storage).await?;
+            Ok(DispatchResult::Replica)
+        }
         v => Err(ServerError::InvalidCommand(v.to_string())),
     }
 }

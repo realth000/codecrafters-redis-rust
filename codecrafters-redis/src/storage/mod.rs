@@ -6,7 +6,7 @@ use std::{
 };
 
 use serde_redis::{Array, Integer, SimpleError, SimpleString, Value};
-use tokio::sync::oneshot;
+use tokio::{net::TcpStream, sync::oneshot};
 
 use stream::Stream;
 
@@ -631,5 +631,15 @@ impl Storage {
     pub(crate) fn replica_master_id(&self) -> String {
         let lock = self.replication.lock().unwrap();
         lock.id()
+    }
+
+    pub(crate) async fn replica_sync(&mut self, args: Array) -> ServerResult<()> {
+        let mut lock = self.replication.lock().unwrap();
+        lock.sync_command(args).await
+    }
+
+    pub(crate) fn set_replica(&mut self, socket: TcpStream) {
+        let mut lock = self.replication.lock().unwrap();
+        lock.set_replica(socket);
     }
 }

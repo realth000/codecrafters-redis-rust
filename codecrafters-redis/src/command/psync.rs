@@ -50,5 +50,7 @@ pub(super) async fn handle_psync_command(
     buf.extend(b"\r\n");
     buf.extend(EMPTY_RDB_FILE);
 
-    conn.write_bytes(buf.as_slice()).await
+    conn.write_bytes(buf.as_slice()).await?;
+
+    Ok(())
 }
