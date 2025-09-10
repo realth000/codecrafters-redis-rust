@@ -627,4 +627,9 @@ impl Storage {
         let lock = self.replication.lock().unwrap();
         lock.handshake(port).await
     }
+
+    pub(crate) fn replica_master_id(&self) -> String {
+        let lock = self.replication.lock().unwrap();
+        lock.id()
+    }
 }

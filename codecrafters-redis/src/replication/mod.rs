@@ -195,4 +195,8 @@ impl ReplicationState {
 
         Ok(())
     }
+
+    pub(crate) fn id(&self) -> String {
+        self.id.into()
+    }
 }
