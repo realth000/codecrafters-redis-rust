@@ -6,9 +6,9 @@ use crate::{
         exec::handle_exec_command, get::handle_get_command, incr::handle_incr_command,
         info::handle_info_command, llen::handle_llen_command, lpop::handle_lpop_command,
         lpush::handle_lpush_command, lrange::handle_lrange_command, multi::handle_multi_command,
-        ping::handle_ping_command, rpush::handle_rpush_command, set::handle_set_command,
-        tipe::handle_type_command, xadd::handle_xadd_command, xrange::handle_xrange_command,
-        xread::handle_xread_command,
+        ping::handle_ping_command, replconf::handle_replconf_command, rpush::handle_rpush_command,
+        set::handle_set_command, tipe::handle_type_command, xadd::handle_xadd_command,
+        xrange::handle_xrange_command, xread::handle_xread_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -28,6 +28,7 @@ mod lpush;
 mod lrange;
 mod multi;
 mod ping;
+mod replconf;
 mod rpush;
 mod set;
 mod tipe;
@@ -146,6 +147,7 @@ pub(crate) async fn dispatch_normal_command(
         "XREAD" => handle_xread_command(conn, args, storage).await,
         "INCR" => handle_incr_command(conn, args, storage).await,
         "INFO" => handle_info_command(conn, storage).await,
+        "REPLCONF" => handle_replconf_command(conn, args).await,
         v => Err(ServerError::InvalidCommand(v.to_string())),
     }
 }
