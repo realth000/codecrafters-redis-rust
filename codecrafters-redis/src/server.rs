@@ -2,7 +2,10 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use anyhow::{Context, Result};
 use serde_redis::Array;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    select,
+};
 
 use crate::{
     command::{dispatch_command, DispatchResult},
@@ -32,6 +35,30 @@ impl RedisServer {
             .context("failed to bind tcp socket")?;
 
         let mut id = 0;
+
+        if self.storage.has_master() {
+            // Note that once syncing from master is started, current
+            // thread should not be used as master as well, chaining
+            // is not implemented.
+            let mut storage = self.storage.clone();
+
+            tokio::task::block_in_place(move || {
+                tokio::runtime::Handle::current()
+                            .block_on(async move {                loop {
+                    match storage.replica_sync_from_master().await {
+                        Ok(Some(v)) => {
+                            dispatch_command(v);
+                        },
+                        Ok(None) => { /* Do nothing */ }
+                        Err(e) => {
+                            println!("[main] [replica recv]: failed to receive replica sync message from master: {e}");
+                            break;
+                        }
+                    }
+                }
+})
+            });
+        }
 
         loop {
             let (socket, addr) = listener

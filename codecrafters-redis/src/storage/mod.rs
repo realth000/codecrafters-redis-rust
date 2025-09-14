@@ -5,6 +5,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::Result;
 use serde_redis::{Array, Integer, SimpleError, SimpleString, Value};
 use tokio::{net::TcpStream, sync::oneshot};
 
@@ -624,7 +625,7 @@ impl Storage {
     }
 
     pub(crate) async fn replica_handshake(&self, port: u16) -> ServerResult<()> {
-        let lock = self.replication.lock().unwrap();
+        let mut lock = self.replication.lock().unwrap();
         lock.handshake(port).await
     }
 
@@ -641,5 +642,17 @@ impl Storage {
     pub(crate) fn set_replica(&mut self, socket: TcpStream) {
         let mut lock = self.replication.lock().unwrap();
         lock.set_replica(socket);
+    }
+
+    pub(crate) fn has_master(&self) -> bool {
+        let lock = self.replication.lock().unwrap();
+        lock.has_master()
+    }
+
+    /// This function locks replication process, serving as master
+    /// node is not allowed when this function is running.
+    pub(crate) async fn replica_sync_from_master(&mut self) -> Result<Option<Array>> {
+        let mut lock = self.replication.lock().unwrap();
+        lock.sync_command_from_master().await
     }
 }
