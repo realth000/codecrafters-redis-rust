@@ -17,7 +17,7 @@ pub(crate) struct ReplicationState {
     master: Option<(Ipv4Addr, u16)>,
     id: &'static str,
     offset: usize,
-    replica: Option<TcpStream>,
+    replica: Vec<TcpStream>,
 }
 
 impl ReplicationState {
@@ -26,7 +26,7 @@ impl ReplicationState {
             master,
             id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
             offset: 0,
-            replica: None,
+            replica: vec![],
         }
     }
 
@@ -206,17 +206,15 @@ impl ReplicationState {
     }
 
     pub(crate) async fn sync_command(&mut self, args: Array) {
-        let mut conn = match &mut self.replica {
-            Some(v) => Conn::new(10000, v),
-            None => return,
-        };
-
-        if let Err(e) = conn.write_value(Value::Array(args)).await {
-            conn.log(format!("failed to replica sync: {e}"));
+        for conn in self.replica.iter_mut() {
+            let mut conn = Conn::new(10000, conn);
+            if let Err(e) = conn.write_value(Value::Array(args.clone())).await {
+                conn.log(format!("failed to replica sync: {e}"));
+            }
         }
     }
 
     pub(crate) fn set_replica(&mut self, socket: TcpStream) {
-        self.replica = Some(socket);
+        self.replica.push(socket);
     }
 }
