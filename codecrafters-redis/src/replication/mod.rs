@@ -205,12 +205,15 @@ impl ReplicationState {
         self.id.into()
     }
 
-    pub(crate) async fn sync_command(&mut self, args: Array) -> ServerResult<()> {
+    pub(crate) async fn sync_command(&mut self, args: Array) {
         let mut conn = match &mut self.replica {
             Some(v) => Conn::new(10000, v),
-            None => return Ok(()),
+            None => return,
         };
-        conn.write_value(Value::Array(args)).await
+
+        if let Err(e) = conn.write_value(Value::Array(args)).await {
+            conn.log(format!("failed to replica sync: {e}"));
+        }
     }
 
     pub(crate) fn set_replica(&mut self, socket: TcpStream) {

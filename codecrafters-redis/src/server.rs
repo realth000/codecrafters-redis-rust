@@ -5,7 +5,7 @@ use serde_redis::Array;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::{
-    command::dispatch_command,
+    command::{dispatch_command, DispatchResult},
     conn::Conn,
     error::{ServerError, ServerResult},
     storage::Storage,
@@ -69,8 +69,21 @@ impl RedisServer {
             conn.log("receive message");
             let message: Array =
                 serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
-            dispatch_command(&mut conn, message, storage).await?;
             conn.log("responded to client");
+            match dispatch_command(&mut conn, message.clone(), storage).await? {
+                DispatchResult::None => { /* Do nothing */ }
+                DispatchResult::Replica => {
+                    storage.set_replica(stream);
+                    break;
+                }
+                DispatchResult::ReplicaSync => {
+                    let mut storage = storage.clone();
+                    tokio::task::block_in_place(move || {
+                        tokio::runtime::Handle::current()
+                            .block_on(async move { storage.replica_sync(message.clone()).await })
+                    });
+                }
+            }
         }
         Ok(())
     }

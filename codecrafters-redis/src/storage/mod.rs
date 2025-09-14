@@ -633,7 +633,7 @@ impl Storage {
         lock.id()
     }
 
-    pub(crate) async fn replica_sync(&mut self, args: Array) -> ServerResult<()> {
+    pub(crate) async fn replica_sync(&mut self, args: Array) {
         let mut lock = self.replication.lock().unwrap();
         lock.sync_command(args).await
     }

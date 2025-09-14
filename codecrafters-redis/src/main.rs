@@ -12,7 +12,7 @@ mod server;
 mod storage;
 mod transaction;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
     let mut port = 6379;

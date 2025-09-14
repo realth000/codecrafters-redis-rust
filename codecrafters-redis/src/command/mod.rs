@@ -48,6 +48,7 @@ pub(crate) enum DispatchResult {
     ReplicaSync,
 }
 
+#[must_use]
 pub(crate) async fn dispatch_command(
     conn: &mut Conn<'_>,
     mut args: Array,
@@ -147,6 +148,7 @@ pub(crate) async fn dispatch_command(
     }
 }
 
+#[must_use]
 pub(crate) async fn dispatch_normal_command(
     conn: &mut Conn<'_>,
     cmd: &str,
