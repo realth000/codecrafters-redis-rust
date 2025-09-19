@@ -8,7 +8,8 @@ use crate::{
         lpush::handle_lpush_command, lrange::handle_lrange_command, multi::handle_multi_command,
         ping::handle_ping_command, psync::handle_psync_command, replconf::handle_replconf_command,
         rpush::handle_rpush_command, set::handle_set_command, tipe::handle_type_command,
-        xadd::handle_xadd_command, xrange::handle_xrange_command, xread::handle_xread_command,
+        wait::handle_wait_command, xadd::handle_xadd_command, xrange::handle_xrange_command,
+        xread::handle_xread_command,
     },
     conn::Conn,
     error::{ServerError, ServerResult},
@@ -34,6 +35,7 @@ mod replconf;
 mod rpush;
 mod set;
 mod tipe;
+mod wait;
 mod xadd;
 mod xrange;
 mod xread;
@@ -155,6 +157,10 @@ pub(crate) async fn dispatch_command(
                         "PSYNC" => {
                             handle_psync_command(conn, args, rep).await?;
                             Ok(DispatchResult::Replica)
+                        }
+                        "WAIT" => {
+                            handle_wait_command(conn, args, rep).await?;
+                            Ok(DispatchResult::None)
                         }
                         v => dispatch_normal_command(conn, v, args, storage).await,
                     }
