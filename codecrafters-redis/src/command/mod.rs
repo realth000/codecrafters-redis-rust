@@ -46,6 +46,11 @@ pub(crate) enum DispatchResult {
     Replica,
 
     /// Current command need to be synced to replica.
+    ///
+    /// * If current redis instance is a replica node, apply that command on "myself",
+    ///   now "myself" is the redis node that need need to be synced.
+    /// * If current redis instance is a master node, record that this command should
+    ///   send to all replica nodes that want to sync their data.
     ReplicaSync,
 }
 

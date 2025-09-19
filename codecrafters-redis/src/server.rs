@@ -27,6 +27,9 @@ impl RedisServer {
         }
     }
 
+    /// Run the server.
+    ///
+    /// Hold a replication settings to act like master node, sync commands to replicas connected.
     pub async fn serve(&self, rep: ReplicationState) -> Result<()> {
         let listener = TcpListener::bind((self.ip, self.port))
             .await
@@ -48,6 +51,10 @@ impl RedisServer {
             });
             id += 1;
         }
+    }
+
+    pub fn clone_storage(&self) -> Storage {
+        self.storage.clone()
     }
 
     async fn handle_task(

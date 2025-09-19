@@ -15,6 +15,15 @@ use crate::{
     error::{ServerError, ServerResult},
 };
 
+/// Replication state stores info and states about replication feature in redis.
+///
+/// In replication, there are two kinds of redis instance:
+///
+/// * Master node, which produce commands that need to be applied on replica node.
+/// * Replica node, which ask or listen to master node to get commands need to apply
+///   on itself, keeps sync with master node.
+///
+/// Current instance can be master node or replica node or both at the same time.
 #[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {
     inner: Arc<Mutex<ReplicationInner>>,
@@ -22,9 +31,25 @@ pub(crate) struct ReplicationState {
 
 #[derive(Debug)]
 struct ReplicationInner {
+    /// Ip and port of the master node, if configured.
+    ///
+    /// Current instance will act like replica node if this field is not `None`.
     master: Option<(Ipv4Addr, u16)>,
+
+    /// Id of current node.
+    ///
+    /// In this challenge we use a fixed string instead of random string.
     id: &'static str,
+
+    /// The offset between server? not used yet.
     offset: usize,
+
+    /// All connections with replicas.
+    ///
+    /// Multiple redis instance may connect with current instance, they want to
+    /// keep sync with current instance.
+    ///
+    /// If this field is not empty, current instance acts like a master node.
     replica: Vec<TcpStream>,
 }
 
@@ -46,7 +71,7 @@ impl ReplicationState {
         lock.info()
     }
 
-    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<()> {
+    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<TcpStream> {
         let lock = self.inner.lock().unwrap();
         lock.handshake(port).await
     }
@@ -88,7 +113,7 @@ impl ReplicationInner {
         Value::BulkString(BulkString::new(buf))
     }
 
-    async fn handshake(&self, port: u16) -> ServerResult<()> {
+    async fn handshake(&self, port: u16) -> ServerResult<TcpStream> {
         let master_addr = match self.master {
             Some(v) => v,
             None => return Err(ServerError::ReplicaConfigNotSet),
@@ -236,7 +261,7 @@ impl ReplicationInner {
 
         println!("[replica] handshake success, master id is {master_id}");
 
-        Ok(())
+        Ok(conn)
     }
 
     fn id(&self) -> String {
