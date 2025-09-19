@@ -1,4 +1,4 @@
-use serde_redis::{Array, SimpleString, Value};
+use serde_redis::{Array, BulkString, SimpleString, Value};
 
 use crate::{
     conn::Conn,
@@ -17,8 +17,13 @@ pub(super) async fn handle_replconf_command(
             args: args.clone(),
         })?;
 
-    let value = match key.as_str() {
+    let value = match key.to_lowercase().as_str() {
         "listening-port" | "capa" => Value::SimpleString(SimpleString::new("OK")),
+        "getack" => Value::Array(Array::with_values(vec![
+            Value::BulkString(BulkString::new("REPLCONF")),
+            Value::BulkString(BulkString::new("ACK")),
+            Value::BulkString(BulkString::new(0.to_string().as_bytes())),
+        ])),
         v => {
             conn.log(format!("invalid argument {v}"));
             return Err(ServerError::InvalidArgs {
