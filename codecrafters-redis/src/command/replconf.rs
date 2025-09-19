@@ -34,5 +34,5 @@ pub(super) async fn handle_replconf_command(
             });
         }
     };
-    conn.write_value(value).await
+    conn.sync_value(value).await
 }

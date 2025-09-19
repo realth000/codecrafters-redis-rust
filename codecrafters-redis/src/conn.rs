@@ -19,6 +19,7 @@ pub(crate) struct Conn<'a> {
     pub id: usize,
     stream: &'a mut TcpStream,
     transaction: Transaction,
+    in_sync: bool,
 }
 
 impl<'a> Conn<'a> {
@@ -27,6 +28,16 @@ impl<'a> Conn<'a> {
             id,
             stream,
             transaction: Transaction::new(),
+            in_sync: false,
+        }
+    }
+
+    pub(crate) fn new_sync(id: usize, stream: &'a mut TcpStream) -> Self {
+        Self {
+            id,
+            stream,
+            transaction: Transaction::new(),
+            in_sync: true,
         }
     }
 
@@ -48,14 +59,29 @@ impl<'a> Conn<'a> {
         if self.is_executing_transaction() {
             self.transaction.record_result(value);
             Ok(())
-        } else {
+        } else if !self.in_sync {
             let content = serde_redis::to_vec(&value).map_err(ServerError::SerdeError)?;
             self.stream
                 .write(&content)
                 .await
                 .map_err(ServerError::IoError)?;
             Ok(())
+        } else {
+            self.log("skip response in sync");
+            Ok(())
         }
+    }
+
+    /// Still write value back to server even flagged in sync.
+    ///
+    /// For replconf command only.
+    pub(crate) async fn sync_value(&mut self, value: Value) -> ServerResult<()> {
+        let content = serde_redis::to_vec(&value).map_err(ServerError::SerdeError)?;
+        self.stream
+            .write(&content)
+            .await
+            .map_err(ServerError::IoError)?;
+        Ok(())
     }
 
     /// Record command in transaction.

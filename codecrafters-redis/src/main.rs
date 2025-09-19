@@ -177,7 +177,7 @@ async fn run_replica(
                 .context("failed to deserialize replia master message")?;
             println!("[main][replica] parsed {len} bytes command, total is {n}");
             let rep2 = rep.clone();
-            let mut conn = Conn::new(30000, &mut rep_master_conn);
+            let mut conn = Conn::new_sync(30000, &mut rep_master_conn);
             match dispatch_command(&mut conn, message.clone(), &mut storage, rep2)
                 .await
                 .context("failed to dispatch replica command from master")?
