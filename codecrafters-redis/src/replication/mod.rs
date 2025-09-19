@@ -152,6 +152,25 @@ impl ReplicationState {
             }
         }
     }
+
+    pub(crate) async fn replica_notify(&mut self) {
+        let mut lock = self.inner.lock().unwrap();
+
+        let ack = serde_redis::to_vec(&Value::Array(Array::with_values(vec![
+            Value::BulkString(BulkString::new("REPLCONF")),
+            Value::BulkString(BulkString::new("GETACK")),
+            Value::BulkString(BulkString::new("*")),
+        ])))
+        .unwrap();
+
+        tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current().block_on(async move {
+                for x in lock.replica.iter_mut() {
+                    let _ = x.write(&ack).await;
+                }
+            })
+        });
+    }
 }
 
 impl ReplicationInner {

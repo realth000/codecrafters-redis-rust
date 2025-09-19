@@ -34,6 +34,8 @@ pub(super) async fn handle_wait_command(
 
     conn.log(format!("[wait] count={count}, duration={duration:?}"));
 
+    // rep.replica_notify().await;
+
     let replica_count = rep.replica_count(conn.id);
     let v = if replica_count >= count {
         conn.log(format!("[wait] replica count is {replica_count}"));
