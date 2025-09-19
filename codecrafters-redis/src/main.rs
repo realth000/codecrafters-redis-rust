@@ -2,7 +2,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 
 use anyhow::{Context, Result};
 
-use crate::server::RedisServer;
+use crate::{replication::ReplicationState, server::RedisServer};
 
 mod command;
 mod conn;
@@ -16,7 +16,7 @@ mod transaction;
 async fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
     let mut port = 6379;
-    let mut master = None;
+    let mut master_config = None;
     for w in args.windows(2) {
         match w[0].as_str() {
             "--port" => port = w[1].parse::<u16>().context("invalid port")?,
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
                         port.parse::<u16>().unwrap(),
                     )
                 }) {
-                    Some((ip, port)) => master = Some((ip, port)),
+                    Some((ip, port)) => master_config = Some((ip, port)),
                     None => continue,
                 }
             }
@@ -39,10 +39,16 @@ async fn main() -> Result<()> {
         }
     }
 
-    let server = RedisServer::new(Ipv4Addr::new(127, 0, 0, 1), port, master);
-    if let Err(e) = server.replica_handshake().await {
-        println!("[main][replica]: {e}");
+    let replication = ReplicationState::new(master_config);
+
+    if let Err(e) = replication.handshake(port).await {
+        println!("[main][replica] handshake failed: {e}");
     }
-    server.serve().await.context("when running server")?;
+
+    let server = RedisServer::new(Ipv4Addr::new(127, 0, 0, 1), port);
+    server
+        .serve(replication)
+        .await
+        .context("when running server")?;
     Ok(())
 }

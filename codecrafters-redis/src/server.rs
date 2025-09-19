@@ -7,7 +7,8 @@ use tokio::net::{TcpListener, TcpStream};
 use crate::{
     command::{dispatch_command, DispatchResult},
     conn::Conn,
-    error::{ServerError, ServerResult},
+    error::ServerError,
+    replication::ReplicationState,
     storage::Storage,
 };
 
@@ -18,15 +19,15 @@ pub struct RedisServer {
 }
 
 impl RedisServer {
-    pub fn new(ip: Ipv4Addr, port: u16, master: Option<(Ipv4Addr, u16)>) -> Self {
+    pub fn new(ip: Ipv4Addr, port: u16) -> Self {
         Self {
             ip,
             port,
-            storage: Storage::new(master),
+            storage: Storage::new(),
         }
     }
 
-    pub async fn serve(&self) -> Result<()> {
+    pub async fn serve(&self, rep: ReplicationState) -> Result<()> {
         let listener = TcpListener::bind((self.ip, self.port))
             .await
             .context("failed to bind tcp socket")?;
@@ -39,8 +40,9 @@ impl RedisServer {
                 .await
                 .context("failed to accept new tcp connection")?;
             let mut s = self.storage.clone();
+            let rep = rep.clone();
             tokio::spawn(async move {
-                if let Err(e) = Self::handle_task(&mut s, id, socket, addr).await {
+                if let Err(e) = Self::handle_task(&mut s, id, socket, addr, rep).await {
                     println!("[{id}] failed to handle task: {e:?}");
                 }
             });
@@ -53,6 +55,7 @@ impl RedisServer {
         id: usize,
         mut stream: TcpStream,
         addr: SocketAddr,
+        mut rep: ReplicationState,
     ) -> Result<()> {
         let mut conn = Conn::new(id, &mut stream);
         conn.log(format!("new connection with client {addr:?}"));
@@ -70,25 +73,22 @@ impl RedisServer {
             let message: Array =
                 serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
             conn.log("responded to client");
-            match dispatch_command(&mut conn, message.clone(), storage).await? {
+            let rep2 = rep.clone();
+            match dispatch_command(&mut conn, message.clone(), storage, rep2).await? {
                 DispatchResult::None => { /* Do nothing */ }
                 DispatchResult::Replica => {
-                    storage.set_replica(stream);
+                    rep.set_replica(stream);
                     break;
                 }
                 DispatchResult::ReplicaSync => {
-                    let mut storage = storage.clone();
+                    let mut rep = rep.clone();
                     tokio::task::block_in_place(move || {
                         tokio::runtime::Handle::current()
-                            .block_on(async move { storage.replica_sync(message.clone()).await })
+                            .block_on(async move { rep.sync_command(message.clone()).await })
                     });
                 }
             }
         }
         Ok(())
-    }
-
-    pub(crate) async fn replica_handshake(&self) -> ServerResult<()> {
-        self.storage.replica_handshake(self.port).await
     }
 }

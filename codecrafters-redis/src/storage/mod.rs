@@ -1,20 +1,17 @@
 use std::{
     collections::HashMap,
-    net::Ipv4Addr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde_redis::{Array, Integer, SimpleError, SimpleString, Value};
-use tokio::{net::TcpStream, sync::oneshot};
+use tokio::sync::oneshot;
 
 use stream::Stream;
 
 mod stream;
 
 pub use stream::StreamId;
-
-use crate::{error::ServerResult, replication::ReplicationState};
 
 pub(crate) type OpResult<T> = Result<T, OpError>;
 
@@ -234,7 +231,6 @@ pub(crate) struct Storage {
     inner: Arc<Mutex<StorageInner>>,
     lpop_blocked_task: Arc<Mutex<Vec<LpopBlockedTask>>>,
     xread_blocked_task: Arc<Mutex<Vec<XreadBlockedTask>>>,
-    replication: Arc<Mutex<ReplicationState>>,
 }
 
 struct StorageInner {
@@ -251,7 +247,7 @@ impl StorageInner {
 }
 
 impl Storage {
-    pub fn new(master: Option<(Ipv4Addr, u16)>) -> Self {
+    pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(StorageInner {
                 data: HashMap::new(),
@@ -259,7 +255,6 @@ impl Storage {
             })),
             lpop_blocked_task: Arc::new(Mutex::new(vec![])),
             xread_blocked_task: Arc::new(Mutex::new(vec![])),
-            replication: Arc::new(Mutex::new(ReplicationState::new(master))),
         }
     }
 
@@ -616,30 +611,5 @@ impl Storage {
                 Ok(value)
             }
         }
-    }
-
-    pub(crate) fn info(&self) -> Value {
-        let lock = self.replication.lock().unwrap();
-        lock.info()
-    }
-
-    pub(crate) async fn replica_handshake(&self, port: u16) -> ServerResult<()> {
-        let lock = self.replication.lock().unwrap();
-        lock.handshake(port).await
-    }
-
-    pub(crate) fn replica_master_id(&self) -> String {
-        let lock = self.replication.lock().unwrap();
-        lock.id()
-    }
-
-    pub(crate) async fn replica_sync(&mut self, args: Array) {
-        let mut lock = self.replication.lock().unwrap();
-        lock.sync_command(args).await
-    }
-
-    pub(crate) fn set_replica(&mut self, socket: TcpStream) {
-        let mut lock = self.replication.lock().unwrap();
-        lock.set_replica(socket);
     }
 }

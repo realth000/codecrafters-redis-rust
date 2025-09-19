@@ -12,13 +12,13 @@ const EMPTY_RDB_FILE: [u8; 88] = [
 use crate::{
     conn::Conn,
     error::{ServerError, ServerResult},
-    storage::Storage,
+    replication::ReplicationState,
 };
 
 pub(super) async fn handle_psync_command(
     conn: &mut Conn<'_>,
     mut args: Array,
-    storage: &mut Storage,
+    rep: ReplicationState,
 ) -> ServerResult<()> {
     conn.log("run command PSYNC");
     let master_id = args
@@ -37,10 +37,7 @@ pub(super) async fn handle_psync_command(
 
     conn.log(format!("PSYNC {master_id} {offset}"));
 
-    let value = Value::SimpleString(SimpleString::new(format!(
-        "FULLRESYNC {} 0",
-        storage.replica_master_id()
-    )));
+    let value = Value::SimpleString(SimpleString::new(format!("FULLRESYNC {} 0", rep.id(),)));
 
     conn.write_value(value).await?;
 

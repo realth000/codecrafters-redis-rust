@@ -12,6 +12,7 @@ use crate::{
     },
     conn::Conn,
     error::{ServerError, ServerResult},
+    replication::ReplicationState,
     storage::Storage,
 };
 
@@ -53,6 +54,7 @@ pub(crate) async fn dispatch_command(
     conn: &mut Conn<'_>,
     mut args: Array,
     storage: &mut Storage,
+    rep: ReplicationState,
 ) -> ServerResult<DispatchResult> {
     if args.is_null_or_empty() {
         return Err(ServerError::InvalidMessage("args is null or empty".into()));
@@ -133,6 +135,21 @@ pub(crate) async fn dispatch_command(
                         "DISCARD" => {
                             handle_discard_command(conn).await?;
                             Ok(DispatchResult::None)
+                        }
+
+                        "INFO" => {
+                            // INFO command handles things more than about replication,
+                            // but we only implement them for now.
+                            handle_info_command(conn, rep).await?;
+                            Ok(DispatchResult::None)
+                        }
+                        "REPLCONF" => {
+                            handle_replconf_command(conn, args).await?;
+                            Ok(DispatchResult::None)
+                        }
+                        "PSYNC" => {
+                            handle_psync_command(conn, args, rep).await?;
+                            Ok(DispatchResult::Replica)
                         }
                         v => dispatch_normal_command(conn, v, args, storage).await,
                     }
@@ -216,18 +233,6 @@ pub(crate) async fn dispatch_normal_command(
         "INCR" => {
             handle_incr_command(conn, args, storage).await?;
             Ok(DispatchResult::ReplicaSync)
-        }
-        "INFO" => {
-            handle_info_command(conn, storage).await?;
-            Ok(DispatchResult::None)
-        }
-        "REPLCONF" => {
-            handle_replconf_command(conn, args).await?;
-            Ok(DispatchResult::None)
-        }
-        "PSYNC" => {
-            handle_psync_command(conn, args, storage).await?;
-            Ok(DispatchResult::Replica)
         }
         v => Err(ServerError::InvalidCommand(v.to_string())),
     }

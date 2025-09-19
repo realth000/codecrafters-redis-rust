@@ -1,4 +1,7 @@
-use std::net::{Ipv4Addr, SocketAddr};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{anyhow, Context};
 use serde_redis::{Array, BulkString, Value};
@@ -12,8 +15,13 @@ use crate::{
     error::{ServerError, ServerResult},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct ReplicationState {
+    inner: Arc<Mutex<ReplicationInner>>,
+}
+
+#[derive(Debug)]
+struct ReplicationInner {
     master: Option<(Ipv4Addr, u16)>,
     id: &'static str,
     offset: usize,
@@ -22,15 +30,45 @@ pub(crate) struct ReplicationState {
 
 impl ReplicationState {
     pub(crate) fn new(master: Option<(Ipv4Addr, u16)>) -> Self {
-        Self {
+        let inner = ReplicationInner {
             master,
             id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
             offset: 0,
             replica: vec![],
+        };
+        Self {
+            inner: Arc::new(Mutex::new(inner)),
         }
     }
 
     pub(crate) fn info(&self) -> Value {
+        let lock = self.inner.lock().unwrap();
+        lock.info()
+    }
+
+    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<()> {
+        let lock = self.inner.lock().unwrap();
+        lock.handshake(port).await
+    }
+
+    pub(crate) fn id(&self) -> String {
+        let lock = self.inner.lock().unwrap();
+        lock.id()
+    }
+
+    pub(crate) async fn sync_command(&mut self, args: Array) {
+        let mut lock = self.inner.lock().unwrap();
+        lock.sync_command(args).await
+    }
+
+    pub(crate) fn set_replica(&mut self, socket: TcpStream) {
+        let mut lock = self.inner.lock().unwrap();
+        lock.set_replica(socket)
+    }
+}
+
+impl ReplicationInner {
+    fn info(&self) -> Value {
         let mut buf = vec![];
         buf.extend(b"# Replication\n");
         if self.master.is_some() {
@@ -50,7 +88,7 @@ impl ReplicationState {
         Value::BulkString(BulkString::new(buf))
     }
 
-    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<()> {
+    async fn handshake(&self, port: u16) -> ServerResult<()> {
         let master_addr = match self.master {
             Some(v) => v,
             None => return Err(ServerError::ReplicaConfigNotSet),
@@ -181,7 +219,7 @@ impl ReplicationState {
         {
             Value::SimpleString(s) => {
                 let segs = s.value().split(' ').collect::<Vec<_>>();
-                if segs.len() == 3 && segs[0] == "FULLSYNC" && segs[2] == "0" {
+                if segs.len() == 3 && segs[0] == "FULLRESYNC" && segs[2] == "0" {
                     segs[1].to_string()
                 } else {
                     return Err(ServerError::Custom(anyhow!(
@@ -201,11 +239,11 @@ impl ReplicationState {
         Ok(())
     }
 
-    pub(crate) fn id(&self) -> String {
+    fn id(&self) -> String {
         self.id.into()
     }
 
-    pub(crate) async fn sync_command(&mut self, args: Array) {
+    async fn sync_command(&mut self, args: Array) {
         for conn in self.replica.iter_mut() {
             let mut conn = Conn::new(10000, conn);
             if let Err(e) = conn.write_value(Value::Array(args.clone())).await {
@@ -214,7 +252,7 @@ impl ReplicationState {
         }
     }
 
-    pub(crate) fn set_replica(&mut self, socket: TcpStream) {
+    fn set_replica(&mut self, socket: TcpStream) {
         self.replica.push(socket);
     }
 }

@@ -1,10 +1,10 @@
-use crate::{conn::Conn, error::ServerResult, storage::Storage};
+use crate::{conn::Conn, error::ServerResult, replication::ReplicationState};
 
 pub(super) async fn handle_info_command(
     conn: &mut Conn<'_>,
-    storage: &mut Storage,
+    rep: ReplicationState,
 ) -> ServerResult<()> {
     conn.log("run command INFO");
-    let value = storage.info();
+    let value = rep.info();
     conn.write_value(value).await
 }
