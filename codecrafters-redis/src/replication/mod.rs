@@ -100,6 +100,13 @@ impl ReplicationState {
         let lock = self.inner.lock().unwrap();
         lock.offset
     }
+
+    pub(crate) fn replica_count(&self) -> usize {
+        // How to check if a connection is closed by peer?
+        // we should drop those ones.
+        let lock = self.inner.lock().unwrap();
+        lock.replica.len()
+    }
 }
 
 impl ReplicationInner {
