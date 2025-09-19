@@ -149,7 +149,7 @@ pub(crate) async fn dispatch_command(
                             Ok(DispatchResult::None)
                         }
                         "REPLCONF" => {
-                            handle_replconf_command(conn, args).await?;
+                            handle_replconf_command(conn, args, rep).await?;
                             Ok(DispatchResult::None)
                         }
                         "PSYNC" => {

@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run_replica(
-    rep: ReplicationState,
+    mut rep: ReplicationState,
     rep_master_conn: Option<TcpStream>,
     mut storage: Storage,
 ) -> Result<()> {
@@ -190,6 +190,7 @@ async fn run_replica(
                     println!("[main][replica] sync command from master node: {message:?}");
                 }
             }
+            rep.add_offset(len);
 
             if len == 0 {
                 // I think this is unreachable.

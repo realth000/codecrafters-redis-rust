@@ -90,6 +90,16 @@ impl ReplicationState {
         let mut lock = self.inner.lock().unwrap();
         lock.set_replica(socket)
     }
+
+    pub(crate) fn add_offset(&mut self, len: usize) {
+        let mut lock = self.inner.lock().unwrap();
+        lock.offset += len
+    }
+
+    pub(crate) fn offset(&self) -> usize {
+        let lock = self.inner.lock().unwrap();
+        lock.offset
+    }
 }
 
 impl ReplicationInner {
