@@ -15,7 +15,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 
 pub use array::Array;
 pub use bulk_string::BulkString;
-pub use decode::from_bytes;
+pub use decode::{from_bytes, from_bytes_len};
 pub use encode::to_vec;
 pub use error::RdError;
 pub use integer::Integer;

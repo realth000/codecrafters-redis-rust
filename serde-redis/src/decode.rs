@@ -128,6 +128,10 @@ impl<'de> Decoder<'de> {
         }
     }
 
+    fn position(&self) -> u64 {
+        self.cursor.pos()
+    }
+
     fn peek(&mut self) -> Option<u8> {
         self.cursor.foresee_any()
     }
@@ -628,6 +632,15 @@ where
     T: serde::de::Deserialize<'de>,
 {
     serde::de::Deserialize::deserialize(&mut Decoder::from_bytes(s))
+}
+
+pub fn from_bytes_len<'de, T>(s: &'de [u8]) -> Result<(T, usize), RdError>
+where
+    T: serde::de::Deserialize<'de>,
+{
+    let mut decoder = Decoder::from_bytes(s);
+    let ret = serde::de::Deserialize::deserialize(&mut decoder)?;
+    Ok((ret, decoder.position() as usize))
 }
 
 #[cfg(test)]

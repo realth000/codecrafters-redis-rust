@@ -34,9 +34,8 @@ impl RedisServer {
         let listener = TcpListener::bind((self.ip, self.port))
             .await
             .context("failed to bind tcp socket")?;
-
+        println!("[server] server started");
         let mut id = 0;
-
         loop {
             let (socket, addr) = listener
                 .accept()
@@ -53,7 +52,7 @@ impl RedisServer {
         }
     }
 
-    pub fn clone_storage(&self) -> Storage {
+    pub(crate) fn clone_storage(&self) -> Storage {
         self.storage.clone()
     }
 
@@ -76,10 +75,9 @@ impl RedisServer {
                 conn.log("connection closed");
                 break;
             }
-            conn.log("receive message");
+            conn.log(format!("receive message {n} bytes"));
             let message: Array =
                 serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
-            conn.log("responded to client");
             let rep2 = rep.clone();
             match dispatch_command(&mut conn, message.clone(), storage, rep2).await? {
                 DispatchResult::None => { /* Do nothing */ }

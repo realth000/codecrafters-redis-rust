@@ -233,12 +233,16 @@ impl ReplicationInner {
             .context("failed to send psync")
             .map_err(ServerError::Custom)?;
         println!("[replica] psync: sent {n} bytes");
-        let n = conn
-            .read(&mut buf)
+        // +FULLRESYNC <REPL_ID> 0\r\n
+        // 1    +     10          +  1  + 40 +  1  +  1  + 2
+        // ' '     'FULLRESYNC'     ' '   ID   ' '   '0'   '\r\n'
+        // 56bytes
+        let mut psync_resp_buf = [0u8; 56];
+        conn.read_exact(&mut psync_resp_buf)
             .await
             .context("failed to read psync reply")
             .map_err(ServerError::Custom)?;
-        let master_id = match serde_redis::from_bytes(&buf[0..n])
+        let master_id = match serde_redis::from_bytes(&psync_resp_buf)
             .context("failed to read psync response:")
             .map_err(ServerError::Custom)?
         {
