@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
 };
@@ -51,6 +52,15 @@ struct ReplicationInner {
     ///
     /// If this field is not empty, current instance acts like a master node.
     replica: Vec<TcpStream>,
+
+    /// Record for each connection specified by connection id, how many replicas
+    /// have received the last command when WAIT.
+    ///
+    /// * The key is connection id that start WAIT, and value is the count of replicas
+    ///   have recived last command WAIT for.
+    /// * The value shall be reset to zero if a new command come in for the same id.
+    ///   Because WAIT only wait for last command that came in.
+    replica_recv: HashMap<usize, usize>,
 }
 
 impl ReplicationState {
@@ -60,6 +70,7 @@ impl ReplicationState {
             id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
             offset: 0,
             replica: vec![],
+            replica_recv: HashMap::new(),
         };
         Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -81,7 +92,7 @@ impl ReplicationState {
         lock.id()
     }
 
-    pub(crate) async fn sync_command(&mut self, args: Array) {
+    pub(crate) async fn sync_command(&mut self, args: Array) -> usize {
         let mut lock = self.inner.lock().unwrap();
         lock.sync_command(args).await
     }
@@ -101,11 +112,45 @@ impl ReplicationState {
         lock.offset
     }
 
-    pub(crate) fn replica_count(&self) -> usize {
+    /// Get the count of replicas that received last command if connection
+    /// starts WAIT.
+    ///
+    /// 1. Several replicas connected.
+    /// 2. A connection (not replica) came in, id is `conn_id`.
+    /// 3. The connection (id is `conn_id`) sent a command.
+    /// 4. Several replicas received the command in step 2.
+    /// 5. The connection (id is `conn_id`) starts WAIT.
+    /// 6. (Here) Return the count of replicas that received command in step 2.
+    pub(crate) fn replica_count(&self, conn_id: usize) -> usize {
         // How to check if a connection is closed by peer?
         // we should drop those ones.
         let lock = self.inner.lock().unwrap();
-        lock.replica.len()
+        lock.replica_recv
+            .get(&conn_id)
+            .map(|x| x.to_owned())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn replica_reset(&mut self, conn_id: usize) {
+        let mut lock = self.inner.lock().unwrap();
+        match lock.replica_recv.get_mut(&conn_id) {
+            Some(v) => *v = 0,
+            None => {
+                lock.replica_recv.insert(conn_id, 0);
+            }
+        }
+    }
+
+    /// Increase the count of replicas received command by last command.
+    pub(crate) fn replica_increase(&mut self, conn_id: usize, count: usize) {
+        let mut lock = self.inner.lock().unwrap();
+        match lock.replica_recv.get_mut(&conn_id) {
+            Some(v) => *v += count,
+            None => {
+                // Unreachable.
+                lock.replica_recv.insert(conn_id, 1);
+            }
+        }
     }
 }
 
@@ -289,13 +334,19 @@ impl ReplicationInner {
         self.id.into()
     }
 
-    async fn sync_command(&mut self, args: Array) {
+    /// Sync command `args` to all replicas.
+    ///
+    /// Return the count of replicas intend to receive the command.
+    async fn sync_command(&mut self, args: Array) -> usize {
+        let mut synced_replica_count = 0;
         for conn in self.replica.iter_mut() {
             let mut conn = Conn::new(10000, conn);
             if let Err(e) = conn.write_value(Value::Array(args.clone())).await {
                 conn.log(format!("failed to replica sync: {e}"));
             }
+            synced_replica_count += 1;
         }
+        synced_replica_count
     }
 
     fn set_replica(&mut self, socket: TcpStream) {

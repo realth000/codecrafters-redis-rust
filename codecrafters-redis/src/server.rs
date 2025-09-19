@@ -86,10 +86,14 @@ impl RedisServer {
                     break;
                 }
                 DispatchResult::ReplicaSync => {
+                    let conn_id = conn.id;
                     let mut rep = rep.clone();
                     tokio::task::block_in_place(move || {
-                        tokio::runtime::Handle::current()
-                            .block_on(async move { rep.sync_command(message.clone()).await })
+                        tokio::runtime::Handle::current().block_on(async move {
+                            let synced_replica_count = rep.sync_command(message.clone()).await;
+                            rep.replica_increase(conn_id, synced_replica_count);
+                            println!("[{conn_id}][replica sync] {synced_replica_count} replicas received command");
+                        })
                     });
                 }
             }
