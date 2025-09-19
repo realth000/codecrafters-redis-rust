@@ -40,12 +40,8 @@ async fn main() -> Result<()> {
     }
 
     let server = RedisServer::new(Ipv4Addr::new(127, 0, 0, 1), port, master);
-    match server.replica_handshake().await {
-        Ok(_) => {
-            // Listen to master replica sync commands.
-            println!("[main][replica]: start listening to replica sync contents.");
-        }
-        Err(e) => println!("[main][replica]: {e}"),
+    if let Err(e) = server.replica_handshake().await {
+        println!("[main][replica]: {e}");
     }
     server.serve().await.context("when running server")?;
     Ok(())

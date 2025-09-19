@@ -8,7 +8,6 @@ use tokio::{
 };
 
 use crate::{
-    command::dispatch_command,
     conn::Conn,
     error::{ServerError, ServerResult},
 };
@@ -19,7 +18,6 @@ pub(crate) struct ReplicationState {
     id: &'static str,
     offset: usize,
     replica: Vec<TcpStream>,
-    master_conn: Option<TcpStream>,
 }
 
 impl ReplicationState {
@@ -29,7 +27,6 @@ impl ReplicationState {
             id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
             offset: 0,
             replica: vec![],
-            master_conn: None,
         }
     }
 
@@ -53,7 +50,7 @@ impl ReplicationState {
         Value::BulkString(BulkString::new(buf))
     }
 
-    pub(crate) async fn handshake(&mut self, port: u16) -> ServerResult<()> {
+    pub(crate) async fn handshake(&self, port: u16) -> ServerResult<()> {
         let master_addr = match self.master {
             Some(v) => v,
             None => return Err(ServerError::ReplicaConfigNotSet),
@@ -201,8 +198,6 @@ impl ReplicationState {
 
         println!("[replica] handshake success, master id is {master_id}");
 
-        self.master_conn = Some(conn);
-
         Ok(())
     }
 
@@ -221,28 +216,5 @@ impl ReplicationState {
 
     pub(crate) fn set_replica(&mut self, socket: TcpStream) {
         self.replica.push(socket);
-    }
-
-    pub(crate) fn has_master(&self) -> bool {
-        self.master_conn.is_some()
-    }
-
-    pub(crate) async fn sync_command_from_master(&mut self) -> anyhow::Result<Option<Array>> {
-        let conn = self.master_conn.as_mut().unwrap();
-        let mut buf = [0u8; 1024];
-        let n = conn
-            .read(&mut buf)
-            .await
-            .context("[replica recv] failed to read from master_conn")?;
-        if n == 0 {
-            println!("[replica recv] master_conn closed");
-            return Ok(None);
-        }
-
-        let message: Array =
-            serde_redis::from_bytes(&buf[0..n]).map_err(ServerError::SerdeError)?;
-        println!("[replica recv] recv replica commands");
-
-        Ok(Some(message))
     }
 }
